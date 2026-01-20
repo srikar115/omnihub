@@ -10,7 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library';
-import { RegisterDto, LoginDto, GoogleAuthDto } from './dto';
+import { RegisterDto, LoginDto, GoogleAuthDto, RefreshTokenDto } from './dto';
 
 // Nickname generator
 const NICKNAME_ADJECTIVES = [
@@ -56,12 +56,64 @@ export class AuthService {
   }
 
   /**
-   * Generate JWT token
+   * Generate short-lived access token (JWT)
    */
-  private generateToken(payload: { userId: string; email: string }): string {
+  private generateAccessToken(payload: { userId: string; email: string }): string {
     const secret = this.configService.get<string>('jwt.secret') || 'default-secret';
-    const expiresIn = this.configService.get<string>('jwt.expiresIn') || '7d';
+    const expiresIn = this.configService.get<string>('jwt.accessTokenExpiry') || '15m';
     return jwt.sign(payload, secret, { expiresIn });
+  }
+
+  /**
+   * Generate and store refresh token in database
+   */
+  private async generateRefreshToken(
+    userId: string,
+    userAgent?: string,
+    ipAddress?: string,
+  ): Promise<string> {
+    const token = uuidv4();
+    const refreshTokenExpiryMs = this.configService.get<number>('jwt.refreshTokenExpiryMs') || 7 * 24 * 60 * 60 * 1000;
+    const expiresAt = new Date(Date.now() + refreshTokenExpiryMs);
+
+    await this.db.run(
+      `INSERT INTO refresh_tokens (id, user_id, token, expires_at, user_agent, ip_address)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [uuidv4(), userId, token, expiresAt.toISOString(), userAgent || null, ipAddress || null],
+    );
+
+    return token;
+  }
+
+  /**
+   * Get token expiry info for response
+   */
+  private getTokenExpiryInfo() {
+    return {
+      accessTokenExpiresIn: this.configService.get<number>('jwt.accessTokenExpirySeconds') || 900,
+      refreshTokenExpiresIn: Math.floor((this.configService.get<number>('jwt.refreshTokenExpiryMs') || 7 * 24 * 60 * 60 * 1000) / 1000),
+    };
+  }
+
+  /**
+   * Generate both access and refresh tokens
+   */
+  private async generateTokenPair(
+    userId: string,
+    email: string,
+    userAgent?: string,
+    ipAddress?: string,
+  ) {
+    const accessToken = this.generateAccessToken({ userId, email });
+    const refreshToken = await this.generateRefreshToken(userId, userAgent, ipAddress);
+    const { accessTokenExpiresIn, refreshTokenExpiresIn } = this.getTokenExpiryInfo();
+
+    return {
+      accessToken,
+      refreshToken,
+      expiresIn: accessTokenExpiresIn,
+      refreshExpiresIn: refreshTokenExpiresIn,
+    };
   }
 
   /**
@@ -107,7 +159,7 @@ export class AuthService {
   /**
    * Register a new user
    */
-  async register(dto: RegisterDto) {
+  async register(dto: RegisterDto, userAgent?: string, ipAddress?: string) {
     const { email, password, name } = dto;
 
     // Check if email already exists
@@ -136,11 +188,11 @@ export class AuthService {
     // Create default workspace
     const defaultWorkspace = await this.ensureDefaultWorkspace(userId, name);
 
-    // Generate token
-    const token = this.generateToken({ userId, email });
+    // Generate token pair (access + refresh)
+    const tokens = await this.generateTokenPair(userId, email, userAgent, ipAddress);
 
     return {
-      token,
+      ...tokens,
       user: {
         id: userId,
         email,
@@ -154,7 +206,7 @@ export class AuthService {
   /**
    * Login with email and password
    */
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto, userAgent?: string, ipAddress?: string) {
     const { email, password } = dto;
 
     // Find user
@@ -181,11 +233,11 @@ export class AuthService {
     // Ensure default workspace exists
     const defaultWorkspace = await this.ensureDefaultWorkspace(user.id, user.name);
 
-    // Generate token
-    const token = this.generateToken({ userId: user.id, email: user.email });
+    // Generate token pair (access + refresh)
+    const tokens = await this.generateTokenPair(user.id, user.email, userAgent, ipAddress);
 
     return {
-      token,
+      ...tokens,
       user: {
         id: user.id,
         email: user.email,
@@ -199,7 +251,7 @@ export class AuthService {
   /**
    * Authenticate with Google OAuth
    */
-  async googleAuth(dto: GoogleAuthDto) {
+  async googleAuth(dto: GoogleAuthDto, userAgent?: string, ipAddress?: string) {
     const { credential } = dto;
 
     const googleClientId = this.configService.get<string>('google.clientId');
@@ -272,11 +324,11 @@ export class AuthService {
       // Ensure default workspace exists
       const defaultWorkspace = await this.ensureDefaultWorkspace(user.id, user.name);
 
-      // Generate token
-      const token = this.generateToken({ userId: user.id, email: user.email });
+      // Generate token pair (access + refresh)
+      const tokens = await this.generateTokenPair(user.id, user.email, userAgent, ipAddress);
 
       return {
-        token,
+        ...tokens,
         user: {
           id: user.id,
           email: user.email,
@@ -338,5 +390,133 @@ export class AuthService {
       workspaces: parsedWorkspaces,
       defaultWorkspace,
     };
+  }
+
+  /**
+   * Refresh access token using refresh token
+   */
+  async refreshTokens(refreshToken: string, userAgent?: string, ipAddress?: string) {
+    // Find the refresh token in database
+    const storedToken = await this.db.getOne<{
+      id: string;
+      user_id: string;
+      token: string;
+      expires_at: string;
+      revoked_at: string | null;
+    }>(
+      `SELECT * FROM refresh_tokens WHERE token = ? AND revoked_at IS NULL`,
+      [refreshToken],
+    );
+
+    if (!storedToken) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    // Check if token is expired
+    if (new Date(storedToken.expires_at) < new Date()) {
+      throw new UnauthorizedException('Refresh token expired');
+    }
+
+    // Get user
+    const user = await this.db.getOne<{ id: string; email: string }>(
+      'SELECT id, email FROM users WHERE id = ?',
+      [storedToken.user_id],
+    );
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    // Rotate tokens: Revoke old token
+    const newRefreshToken = uuidv4();
+    await this.db.run(
+      `UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP, replaced_by_token = ? WHERE id = ?`,
+      [newRefreshToken, storedToken.id],
+    );
+
+    // Create new refresh token
+    const refreshTokenExpiryMs = this.configService.get<number>('jwt.refreshTokenExpiryMs') || 7 * 24 * 60 * 60 * 1000;
+    const expiresAt = new Date(Date.now() + refreshTokenExpiryMs);
+
+    await this.db.run(
+      `INSERT INTO refresh_tokens (id, user_id, token, expires_at, user_agent, ip_address)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [uuidv4(), user.id, newRefreshToken, expiresAt.toISOString(), userAgent || null, ipAddress || null],
+    );
+
+    // Generate new access token
+    const accessToken = this.generateAccessToken({ userId: user.id, email: user.email });
+    const { accessTokenExpiresIn, refreshTokenExpiresIn } = this.getTokenExpiryInfo();
+
+    return {
+      accessToken,
+      refreshToken: newRefreshToken,
+      expiresIn: accessTokenExpiresIn,
+      refreshExpiresIn: refreshTokenExpiresIn,
+    };
+  }
+
+  /**
+   * Logout - revoke specific refresh token
+   */
+  async logout(refreshToken: string) {
+    const result = await this.db.run(
+      `UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE token = ? AND revoked_at IS NULL`,
+      [refreshToken],
+    );
+
+    return { success: true, message: 'Logged out successfully' };
+  }
+
+  /**
+   * Logout from all devices - revoke all user's refresh tokens
+   */
+  async logoutAll(userId: string) {
+    await this.db.run(
+      `UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL`,
+      [userId],
+    );
+
+    return { success: true, message: 'Logged out from all devices successfully' };
+  }
+
+  /**
+   * Get active sessions for user
+   */
+  async getActiveSessions(userId: string) {
+    const sessions = await this.db.getAll<{
+      id: string;
+      created_at: string;
+      expires_at: string;
+      user_agent: string | null;
+      ip_address: string | null;
+    }>(
+      `SELECT id, created_at, expires_at, user_agent, ip_address 
+       FROM refresh_tokens 
+       WHERE user_id = ? AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP
+       ORDER BY created_at DESC`,
+      [userId],
+    );
+
+    return sessions.map(s => ({
+      id: s.id,
+      createdAt: s.created_at,
+      expiresAt: s.expires_at,
+      userAgent: s.user_agent,
+      ipAddress: s.ip_address,
+    }));
+  }
+
+  /**
+   * Revoke specific session
+   */
+  async revokeSession(userId: string, sessionId: string) {
+    const result = await this.db.run(
+      `UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP 
+       WHERE id = ? AND user_id = ? AND revoked_at IS NULL`,
+      [sessionId, userId],
+    );
+
+    return { success: true, message: 'Session revoked successfully' };
   }
 }

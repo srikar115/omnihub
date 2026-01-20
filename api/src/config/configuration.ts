@@ -3,10 +3,15 @@ export const configuration = () => ({
   port: parseInt(process.env.PORT || '3001', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
 
-  // JWT
+  // JWT & Token Settings
   jwt: {
     secret: process.env.JWT_SECRET || 'omnihub-secret-key-change-in-production',
-    expiresIn: '7d',
+    // Access token - short lived (default: 15 minutes)
+    accessTokenExpiry: process.env.ACCESS_TOKEN_EXPIRY || '15m',
+    accessTokenExpirySeconds: parseInt(process.env.ACCESS_TOKEN_EXPIRY_SECONDS || '900', 10),
+    // Refresh token - longer lived (default: 7 days)
+    refreshTokenExpiry: process.env.REFRESH_TOKEN_EXPIRY || '7d',
+    refreshTokenExpiryMs: parseInt(process.env.REFRESH_TOKEN_EXPIRY_MS || String(7 * 24 * 60 * 60 * 1000), 10),
   },
 
   // Database (PostgreSQL only)
