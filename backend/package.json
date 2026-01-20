@@ -1,0 +1,31 @@
+{
+  "name": "omnihub-backend",
+  "version": "1.0.0",
+  "description": "OmniHub AI Generation Platform Backend",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "keywords": [
+    "ai",
+    "generation",
+    "api"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "axios": "^1.13.2",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.6.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "google-auth-library": "^10.5.0",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.17.1",
+    "razorpay": "^2.9.6",
+    "uuid": "^13.0.0"
+  }
+}
