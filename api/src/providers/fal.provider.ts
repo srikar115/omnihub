@@ -4,7 +4,7 @@ import axios from 'axios';
 
 @Injectable()
 export class FalProvider {
-  private apiKey: string;
+  private apiKey: string | undefined;
   private baseUrl = 'https://queue.fal.run';
 
   constructor(private configService: ConfigService) {

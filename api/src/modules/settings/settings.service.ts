@@ -29,12 +29,12 @@ export class SettingsService {
    */
   async getPricingSettings() {
     return {
-      profitMargin: parseFloat(await this.getSetting('profitMargin')) || 0,
-      profitMarginImage: parseFloat(await this.getSetting('profitMarginImage')) || 0,
-      profitMarginVideo: parseFloat(await this.getSetting('profitMarginVideo')) || 0,
-      profitMarginChat: parseFloat(await this.getSetting('profitMarginChat')) || 0,
-      creditPrice: parseFloat(await this.getSetting('creditPrice')) || 1,
-      freeCredits: parseFloat(await this.getSetting('freeCredits')) || 10,
+      profitMargin: parseFloat((await this.getSetting('profitMargin')) || '0'),
+      profitMarginImage: parseFloat((await this.getSetting('profitMarginImage')) || '0'),
+      profitMarginVideo: parseFloat((await this.getSetting('profitMarginVideo')) || '0'),
+      profitMarginChat: parseFloat((await this.getSetting('profitMarginChat')) || '0'),
+      creditPrice: parseFloat((await this.getSetting('creditPrice')) || '1'),
+      freeCredits: parseFloat((await this.getSetting('freeCredits')) || '10'),
     };
   }
 

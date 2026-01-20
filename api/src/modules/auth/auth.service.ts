@@ -59,8 +59,8 @@ export class AuthService {
    * Generate JWT token
    */
   private generateToken(payload: { userId: string; email: string }): string {
-    const secret = this.configService.get<string>('jwt.secret');
-    const expiresIn = this.configService.get<string>('jwt.expiresIn');
+    const secret = this.configService.get<string>('jwt.secret') || 'default-secret';
+    const expiresIn = this.configService.get<string>('jwt.expiresIn') || '7d';
     return jwt.sign(payload, secret, { expiresIn });
   }
 
@@ -217,7 +217,11 @@ export class AuthService {
       });
 
       const payload = ticket.getPayload();
-      const { sub: googleId, email, name, picture } = payload;
+      if (!payload) {
+        throw new UnauthorizedException('Invalid Google token payload');
+      }
+      const { sub: googleId, email, name: rawName, picture } = payload;
+      const name = rawName || email?.split('@')[0] || 'User';
 
       // Check if user exists with this googleId
       let user = await this.db.getOne<any>(

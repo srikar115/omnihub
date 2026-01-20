@@ -22,8 +22,8 @@ export class AdminAuthGuard implements CanActivate {
     const token = authHeader.split(' ')[1];
 
     try {
-      const secret = this.configService.get<string>('jwt.secret');
-      const decoded = jwt.verify(token, secret) as { adminId: string; isAdmin: boolean };
+      const secret = this.configService.get<string>('jwt.secret') || '';
+      const decoded = jwt.verify(token, secret) as unknown as { adminId: string; isAdmin: boolean };
 
       if (!decoded.isAdmin) {
         throw new UnauthorizedException('Not an admin token');

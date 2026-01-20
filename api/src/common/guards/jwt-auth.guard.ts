@@ -22,8 +22,8 @@ export class JwtAuthGuard implements CanActivate {
     const token = authHeader.split(' ')[1];
 
     try {
-      const secret = this.configService.get<string>('jwt.secret');
-      const decoded = jwt.verify(token, secret) as { userId: string; email: string };
+      const secret = this.configService.get<string>('jwt.secret') || '';
+      const decoded = jwt.verify(token, secret) as unknown as { userId: string; email: string };
 
       // Attach user to request
       request.user = {

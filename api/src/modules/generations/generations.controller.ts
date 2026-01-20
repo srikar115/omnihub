@@ -24,6 +24,7 @@ import { CurrentUser, CurrentUserData } from '@common/decorators';
 @ApiTags('generations')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
+@Controller(GENERATIONS_ROUTES.BASE)
 export class GenerationsController {
   constructor(private readonly generationsService: GenerationsService) {}
 

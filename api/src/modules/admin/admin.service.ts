@@ -29,7 +29,7 @@ export class AdminService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const secret = this.configService.get<string>('jwt.secret');
+    const secret = this.configService.get<string>('jwt.secret') || 'default-secret';
     const token = jwt.sign({ adminId: admin.id, isAdmin: true }, secret, { expiresIn: '24h' });
 
     return { token, admin: { id: admin.id, username: admin.username } };

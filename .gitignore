@@ -5,3 +5,5 @@ node_modules/
 *.db-wal
 .env
 *.pack
+dist/
+build/

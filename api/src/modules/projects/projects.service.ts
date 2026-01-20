@@ -23,8 +23,8 @@ export class ProjectsService {
     const project = await this.db.getOne<any>('SELECT * FROM projects WHERE id = ? AND userId = ?', [id, userId]);
     if (!project) throw new NotFoundException('Project not found');
 
-    const updates = [];
-    const params = [];
+    const updates: string[] = [];
+    const params: any[] = [];
     for (const [key, value] of Object.entries(data)) {
       if (value !== undefined) {
         updates.push(`${key} = ?`);
