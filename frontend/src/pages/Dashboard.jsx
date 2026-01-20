@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -227,79 +227,16 @@ function DashboardContent({ user, updateUserCredits, showAuthModal, loading, nav
     const finalUSD = baseCost * (1 + margin / 100);
     return finalUSD / pricingSettings.creditPrice;
   };
-  
-  // Fetch user-specific data when user or workspace changes
-  useEffect(() => {
-    if (user) {
-      fetchRecentGenerations();
-      fetchStats();
-    }
-  }, [user, activeWorkspace?.id]);
 
-  // Update selected model when type changes
-  useEffect(() => {
-    if (models[generationType]?.length > 0) {
-      setSelectedModel(models[generationType][0]);
-      setSelectedOptions({});
-    }
-  }, [generationType, models]);
-
-  // Calculate price when options or pricing settings change
-  useEffect(() => {
-    if (multiModelMode ? selectedModels.length > 0 : selectedModel) {
-      calculateModelPrice();
-    } else {
-      setCalculatedPrice(0);
-    }
-  }, [selectedModel, selectedModels, multiModelMode, selectedOptions, numImages, generationType, pricingSettings]);
-
-  const fetchModels = async () => {
-    try {
-      const response = await axios.get(`${API_BASE}/models`);
-      const modelsByType = { image: [], video: [], chat: [] };
-      response.data.forEach(model => {
-        if (modelsByType[model.type]) {
-          modelsByType[model.type].push(model);
-        }
-      });
-      setModels(modelsByType);
-      if (modelsByType.image?.length > 0) {
-        setSelectedModel(modelsByType.image[0]);
-      }
-    } catch (err) {
-      console.error('Failed to fetch models:', err);
-    }
-  };
-
-  const fetchAiTools = async () => {
-    try {
-      const response = await axios.get(`${API_BASE}/ai-tools?location=dashboard`);
-      if (response.data && response.data.length > 0) {
-        setAiTools(response.data);
-      }
-    } catch (err) {
-      // Use defaults if API not available
-      console.log('AI Tools API not available, using defaults');
-    }
-  };
-
-  const fetchProjects = async () => {
-    if (!user) return;
-    try {
-      const response = await axios.get(`${API_BASE}/projects`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('userToken')}` }
-      });
-      setProjects(response.data);
-    } catch (err) {
-      console.error('Failed to fetch projects:', err);
-    }
-  };
-
-  const fetchRecentGenerations = async () => {
+  // Define fetch functions before useEffect that uses them
+  const fetchRecentGenerations = useCallback(async () => {
+    const currentWorkspaceId = activeWorkspace?.id;
+    if (!currentWorkspaceId) return; // Don't fetch without workspace ID
+    
     setLoadingGenerations(true);
     try {
       // Always pass workspaceId to filter by active workspace
-      const workspaceParam = activeWorkspace?.id ? `&workspaceId=${activeWorkspace.id}` : '';
+      const workspaceParam = `&workspaceId=${currentWorkspaceId}`;
       const response = await axios.get(`${API_BASE}/generations?limit=8${workspaceParam}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('userToken')}` }
       });
@@ -313,12 +250,15 @@ function DashboardContent({ user, updateUserCredits, showAuthModal, loading, nav
     } finally {
       setLoadingGenerations(false);
     }
-  };
+  }, [activeWorkspace?.id]);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
+    const currentWorkspaceId = activeWorkspace?.id;
+    if (!currentWorkspaceId) return; // Don't fetch without workspace ID
+    
     try {
       // Fetch generations to compute stats from them - always pass workspace
-      const workspaceParam = activeWorkspace?.id ? `&workspaceId=${activeWorkspace.id}` : '';
+      const workspaceParam = `&workspaceId=${currentWorkspaceId}`;
       const response = await axios.get(`${API_BASE}/generations?limit=1000${workspaceParam}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('userToken')}` }
       });
@@ -386,6 +326,74 @@ function DashboardContent({ user, updateUserCredits, showAuthModal, loading, nav
         tokensUsed: 0,
         creditsUsed: 0,
       });
+    }
+  }, [activeWorkspace?.id]);
+  
+  // Fetch user-specific data when user or workspace changes
+  useEffect(() => {
+    // Only fetch when both user and activeWorkspace are available
+    if (user && activeWorkspace) {
+      fetchRecentGenerations();
+      fetchStats();
+    }
+  }, [user, activeWorkspace, fetchRecentGenerations, fetchStats]);
+
+  // Update selected model when type changes
+  useEffect(() => {
+    if (models[generationType]?.length > 0) {
+      setSelectedModel(models[generationType][0]);
+      setSelectedOptions({});
+    }
+  }, [generationType, models]);
+
+  // Calculate price when options or pricing settings change
+  useEffect(() => {
+    if (multiModelMode ? selectedModels.length > 0 : selectedModel) {
+      calculateModelPrice();
+    } else {
+      setCalculatedPrice(0);
+    }
+  }, [selectedModel, selectedModels, multiModelMode, selectedOptions, numImages, generationType, pricingSettings]);
+
+  const fetchModels = async () => {
+    try {
+      const response = await axios.get(`${API_BASE}/models`);
+      const modelsByType = { image: [], video: [], chat: [] };
+      response.data.forEach(model => {
+        if (modelsByType[model.type]) {
+          modelsByType[model.type].push(model);
+        }
+      });
+      setModels(modelsByType);
+      if (modelsByType.image?.length > 0) {
+        setSelectedModel(modelsByType.image[0]);
+      }
+    } catch (err) {
+      console.error('Failed to fetch models:', err);
+    }
+  };
+
+  const fetchAiTools = async () => {
+    try {
+      const response = await axios.get(`${API_BASE}/ai-tools?location=dashboard`);
+      if (response.data && response.data.length > 0) {
+        setAiTools(response.data);
+      }
+    } catch (err) {
+      // Use defaults if API not available
+      console.log('AI Tools API not available, using defaults');
+    }
+  };
+
+  const fetchProjects = async () => {
+    if (!user) return;
+    try {
+      const response = await axios.get(`${API_BASE}/projects`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('userToken')}` }
+      });
+      setProjects(response.data);
+    } catch (err) {
+      console.error('Failed to fetch projects:', err);
     }
   };
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -244,53 +244,16 @@ export default function DashboardPage() {
     const finalUSD = baseCost * (1 + margin / 100);
     return finalUSD / pricingSettings.creditPrice;
   };
-  
-  useEffect(() => {
-    if (user) {
-      fetchRecentGenerations();
-      fetchStats();
-    }
-  }, [user, activeWorkspace?.id]);
 
-  useEffect(() => {
-    if (models[generationType]?.length > 0) {
-      setSelectedModel(models[generationType][0]);
-      setSelectedOptions({});
-    }
-  }, [generationType, models]);
-
-  useEffect(() => {
-    if (multiModelMode ? selectedModels.length > 0 : selectedModel) {
-      calculateModelPrice();
-    } else {
-      setCalculatedPrice(0);
-    }
-  }, [selectedModel, selectedModels, multiModelMode, selectedOptions, numImages, generationType, pricingSettings]);
-
-  const fetchModels = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/models`);
-      const data = await response.json();
-      const modelsByType: Record<string, Model[]> = { image: [], video: [], chat: [] };
-      data.forEach((model: Model) => {
-        if (modelsByType[model.type]) {
-          modelsByType[model.type].push(model);
-        }
-      });
-      setModels(modelsByType);
-      if (modelsByType.image?.length > 0) {
-        setSelectedModel(modelsByType.image[0]);
-      }
-    } catch (err) {
-      console.error('Failed to fetch models:', err);
-    }
-  };
-
-  const fetchRecentGenerations = async () => {
+  // Define fetch functions before useEffect that uses them
+  const fetchRecentGenerations = useCallback(async () => {
+    const currentWorkspaceId = activeWorkspace?.id;
+    if (!currentWorkspaceId) return; // Don't fetch without workspace ID
+    
     setLoadingGenerations(true);
     try {
       // Always pass workspaceId to filter by active workspace
-      const workspaceParam = activeWorkspace?.id ? `&workspaceId=${activeWorkspace.id}` : '';
+      const workspaceParam = `&workspaceId=${currentWorkspaceId}`;
       const response = await fetch(`${API_BASE}/generations?limit=8${workspaceParam}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('userToken')}` },
       });
@@ -303,12 +266,15 @@ export default function DashboardPage() {
     } finally {
       setLoadingGenerations(false);
     }
-  };
+  }, [activeWorkspace?.id]);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
+    const currentWorkspaceId = activeWorkspace?.id;
+    if (!currentWorkspaceId) return; // Don't fetch without workspace ID
+    
     try {
       // Always pass workspaceId to filter by active workspace
-      const workspaceParam = activeWorkspace?.id ? `&workspaceId=${activeWorkspace.id}` : '';
+      const workspaceParam = `&workspaceId=${currentWorkspaceId}`;
       const response = await fetch(`${API_BASE}/generations?limit=1000${workspaceParam}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('userToken')}` },
       });
@@ -354,6 +320,48 @@ export default function DashboardPage() {
       });
     } catch (err) {
       console.error('Failed to fetch stats:', err);
+    }
+  }, [activeWorkspace?.id]);
+  
+  useEffect(() => {
+    // Only fetch when both user and activeWorkspace are available
+    if (user && activeWorkspace) {
+      fetchRecentGenerations();
+      fetchStats();
+    }
+  }, [user, activeWorkspace, fetchRecentGenerations, fetchStats]);
+
+  useEffect(() => {
+    if (models[generationType]?.length > 0) {
+      setSelectedModel(models[generationType][0]);
+      setSelectedOptions({});
+    }
+  }, [generationType, models]);
+
+  useEffect(() => {
+    if (multiModelMode ? selectedModels.length > 0 : selectedModel) {
+      calculateModelPrice();
+    } else {
+      setCalculatedPrice(0);
+    }
+  }, [selectedModel, selectedModels, multiModelMode, selectedOptions, numImages, generationType, pricingSettings]);
+
+  const fetchModels = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/models`);
+      const data = await response.json();
+      const modelsByType: Record<string, Model[]> = { image: [], video: [], chat: [] };
+      data.forEach((model: Model) => {
+        if (modelsByType[model.type]) {
+          modelsByType[model.type].push(model);
+        }
+      });
+      setModels(modelsByType);
+      if (modelsByType.image?.length > 0) {
+        setSelectedModel(modelsByType.image[0]);
+      }
+    } catch (err) {
+      console.error('Failed to fetch models:', err);
     }
   };
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -222,14 +222,38 @@ export function OmniHubContent({
     return finalUSD / pricingSettings.creditPrice;
   };
 
-  // Fetch generations when user or active workspace changes
-  useEffect(() => {
-    if (user) {
-      fetchGenerations();
-    } else {
+  // Define fetchGenerations before useEffect that uses it
+  const fetchGenerations = useCallback(async () => {
+    // Get the current workspace ID from the closure
+    const currentWorkspaceId = activeWorkspace?.id;
+    if (!currentWorkspaceId) return; // Don't fetch without workspace ID
+    
+    try {
+      // Always pass workspaceId to filter generations by active workspace
+      const workspaceParam = `?workspaceId=${currentWorkspaceId}`;
+      const response = await axios.get(`${API_BASE}/generations${workspaceParam}`, getAuthHeaders());
+      setGenerations(response.data.generations || []);
+      setGenerationCounts(response.data.counts || { image: 0, video: 0, chat: 0 });
+      
+      const pending = (response.data.generations || []).filter(g => g.status === 'pending');
+      setActiveQueue(pending);
+    } catch (err) {
+      console.error('Failed to fetch generations:', err);
+    } finally {
       setDataLoading(false);
     }
-  }, [user, activeWorkspace?.id]);
+  }, [activeWorkspace?.id]);
+
+  // Fetch generations when user or active workspace changes
+  useEffect(() => {
+    // Only fetch when both user and activeWorkspace are available
+    // This prevents fetching with empty workspaceId during initial load
+    if (user && activeWorkspace) {
+      fetchGenerations();
+    } else if (!user) {
+      setDataLoading(false);
+    }
+  }, [user, activeWorkspace, fetchGenerations]);
 
   // Poll for generation updates
   useEffect(() => {
@@ -347,23 +371,6 @@ export function OmniHubContent({
       }
     } catch (err) {
       console.error('Failed to fetch models:', err);
-    }
-  };
-
-  const fetchGenerations = async () => {
-    try {
-      // Always pass workspaceId to filter generations by active workspace
-      const workspaceParam = activeWorkspace?.id ? `?workspaceId=${activeWorkspace.id}` : '';
-      const response = await axios.get(`${API_BASE}/generations${workspaceParam}`, getAuthHeaders());
-      setGenerations(response.data.generations || []);
-      setGenerationCounts(response.data.counts || { image: 0, video: 0, chat: 0 });
-      
-      const pending = (response.data.generations || []).filter(g => g.status === 'pending');
-      setActiveQueue(pending);
-    } catch (err) {
-      console.error('Failed to fetch generations:', err);
-    } finally {
-      setDataLoading(false);
     }
   };
 

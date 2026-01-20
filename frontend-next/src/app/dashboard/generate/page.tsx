@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -149,11 +149,42 @@ export default function GeneratePage() {
     }
   };
 
+  // Define fetchGenerations before useEffect that uses it
+  const fetchGenerations = useCallback(async () => {
+    const token = localStorage.getItem('userToken');
+    if (!token) return;
+
+    // Get the current workspace ID from the closure
+    const currentWorkspaceId = activeWorkspace?.id;
+    if (!currentWorkspaceId) return; // Don't fetch without workspace ID
+
+    try {
+      // Always pass workspaceId to filter generations by active workspace
+      const workspaceParam = `&workspaceId=${currentWorkspaceId}`;
+      const response = await fetch(`${API_BASE}/generations?limit=100${workspaceParam}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      const gens = data.generations || [];
+      setGenerations(gens);
+      
+      // Update queue
+      const pending = gens.filter((g: Generation) => g.status === 'pending' || g.status === 'processing');
+      setActiveQueue(pending);
+    } catch (error) {
+      console.error('Failed to fetch generations');
+    } finally {
+      setDataLoading(false);
+    }
+  }, [activeWorkspace?.id]);
+
   useEffect(() => {
-    if (user) {
+    // Only fetch when both user and activeWorkspace are available
+    // This prevents fetching with empty workspaceId during initial load
+    if (user && activeWorkspace) {
       fetchGenerations();
     }
-  }, [user, activeWorkspace?.id]);
+  }, [user, activeWorkspace, fetchGenerations]);
 
   // Sync state with URL params when they change
   useEffect(() => {
@@ -186,7 +217,7 @@ export default function GeneratePage() {
         clearInterval(pollingRef.current);
       }
     };
-  }, [generations]);
+  }, [generations, fetchGenerations]);
 
   // Auto-select model when type changes
   useEffect(() => {
@@ -283,30 +314,6 @@ export default function GeneratePage() {
       }
     } catch (error) {
       console.error('Failed to fetch models');
-    }
-  };
-
-  const fetchGenerations = async () => {
-    const token = localStorage.getItem('userToken');
-    if (!token) return;
-
-    try {
-      // Always pass workspaceId to filter generations by active workspace
-      const workspaceParam = activeWorkspace?.id ? `&workspaceId=${activeWorkspace.id}` : '';
-      const response = await fetch(`${API_BASE}/generations?limit=100${workspaceParam}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
-      const gens = data.generations || [];
-      setGenerations(gens);
-      
-      // Update queue
-      const pending = gens.filter((g: Generation) => g.status === 'pending' || g.status === 'processing');
-      setActiveQueue(pending);
-    } catch (error) {
-      console.error('Failed to fetch generations');
-    } finally {
-      setDataLoading(false);
     }
   };
 

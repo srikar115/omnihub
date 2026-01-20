@@ -3961,8 +3961,13 @@ app.get('/api/generations', userAuthMiddleware, (req, res) => {
   
   // Filter by workspace
   if (workspaceId) {
-    // Check if this is the user's default workspace
-    const workspace = db.prepare('SELECT isDefault FROM workspaces WHERE id = ? AND ownerId = ?').get(workspaceId, req.user.id);
+    // Check if this is the user's default workspace using workspace_members join
+    // This works for both owners and members
+    const workspace = db.prepare(`
+      SELECT w.isDefault FROM workspaces w
+      JOIN workspace_members wm ON w.id = wm.workspaceId
+      WHERE w.id = ? AND wm.userId = ?
+    `).get(workspaceId, req.user.id);
     
     if (workspace && workspace.isDefault) {
       // For default workspace, include both: workspaceId matches OR workspaceId is NULL (legacy generations)
@@ -3989,7 +3994,12 @@ app.get('/api/generations', userAuthMiddleware, (req, res) => {
   let countQuery = 'SELECT type, COUNT(*) as count FROM generations WHERE userId = ?';
   const countParams = [req.user.id];
   if (workspaceId) {
-    const workspace = db.prepare('SELECT isDefault FROM workspaces WHERE id = ? AND ownerId = ?').get(workspaceId, req.user.id);
+    // Use same workspace_members join for count query
+    const workspace = db.prepare(`
+      SELECT w.isDefault FROM workspaces w
+      JOIN workspace_members wm ON w.id = wm.workspaceId
+      WHERE w.id = ? AND wm.userId = ?
+    `).get(workspaceId, req.user.id);
     if (workspace && workspace.isDefault) {
       countQuery += ' AND (workspaceId = ? OR workspaceId IS NULL OR workspaceId = "")';
       countParams.push(workspaceId);
