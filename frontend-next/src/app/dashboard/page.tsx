@@ -32,6 +32,13 @@ const TYPE_ICONS: Record<string, React.ElementType> = {
   chat: MessageSquare,
 };
 
+// Helper to safely convert to number (handles strings from PostgreSQL DECIMAL)
+const toNumber = (val: any): number => {
+  if (typeof val === 'number') return val;
+  if (typeof val === 'string') return parseFloat(val) || 0;
+  return 0;
+};
+
 const API_BASE = '/api';
 
 interface AiTool {
@@ -460,7 +467,7 @@ export default function DashboardPage() {
             </h1>
             {user && (
               <p className="text-[var(--text-secondary)] text-sm mt-1">
-                <span className="text-cyan-400 font-medium">{user.credits?.toFixed(2)}</span> credits remaining
+                <span className="text-cyan-400 font-medium">{toNumber(user.credits).toFixed(2)}</span> credits remaining
               </p>
             )}
           </motion.div>
@@ -880,11 +887,11 @@ export default function DashboardPage() {
                       style={{ width: `${Math.min((weekStats.creditsUsed / Math.max(user?.credits || 100, 1)) * 100, 100)}%` }}
                     />
                   </div>
-                  <p className="text-lg font-bold text-cyan-400 mt-2">{weekStats.creditsUsed?.toFixed(2) || '0.00'}</p>
+                  <p className="text-lg font-bold text-cyan-400 mt-2">{toNumber(weekStats.creditsUsed).toFixed(2)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-[var(--text-secondary)] mb-1">Remaining Balance</p>
-                  <p className="text-lg font-bold text-green-400">{user?.credits?.toFixed(2) || '0.00'} credits</p>
+                  <p className="text-lg font-bold text-green-400">{toNumber(user?.credits).toFixed(2)} credits</p>
                 </div>
               </div>
             </div>

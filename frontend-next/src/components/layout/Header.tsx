@@ -49,27 +49,34 @@ function getDisplayCredits(user: User | null, activeWorkspace: Workspace | null)
   label: string;
   icon: 'personal' | 'workspace' | 'allocated';
 } {
+  // Helper to safely convert to number
+  const toNumber = (val: any): number => {
+    if (typeof val === 'number') return val;
+    if (typeof val === 'string') return parseFloat(val) || 0;
+    return 0;
+  };
+
   if (!user) {
     return { amount: 0, label: 'credits', icon: 'personal' };
   }
   
   // Default workspace or no workspace - use personal credits
   if (!activeWorkspace || activeWorkspace.isDefault) {
-    return { amount: user.credits, label: 'credits', icon: 'personal' };
+    return { amount: toNumber(user.credits), label: 'credits', icon: 'personal' };
   }
   
   // Team workspace with individual mode - use allocated credits
   if (activeWorkspace.creditMode === 'individual' && activeWorkspace.allocatedCredits !== undefined) {
-    return { amount: activeWorkspace.allocatedCredits, label: 'allocated', icon: 'allocated' };
+    return { amount: toNumber(activeWorkspace.allocatedCredits), label: 'allocated', icon: 'allocated' };
   }
   
   // Team workspace with shared mode - use workspace credits
   if (activeWorkspace.credits !== undefined) {
-    return { amount: activeWorkspace.credits, label: 'workspace', icon: 'workspace' };
+    return { amount: toNumber(activeWorkspace.credits), label: 'workspace', icon: 'workspace' };
   }
   
   // Fallback to personal credits
-  return { amount: user.credits, label: 'credits', icon: 'personal' };
+  return { amount: toNumber(user.credits), label: 'credits', icon: 'personal' };
 }
 
 export function Header({ 

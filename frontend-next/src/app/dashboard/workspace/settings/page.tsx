@@ -626,7 +626,7 @@ export default function WorkspaceSettingsPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-[var(--text-muted)]">Credits</span>
-                <span className="text-cyan-400">{workspace.credits?.toFixed(2) || 0}</span>
+                <span className="text-cyan-400">{(parseFloat(String(workspace.credits)) || 0).toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[var(--text-muted)]">Credit Mode</span>

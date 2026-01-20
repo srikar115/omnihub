@@ -40,7 +40,7 @@ export class SettingsService {
 
   async getLandingFeatured() {
     const featured = await this.db.getAll<any>(
-      'SELECT * FROM landing_featured WHERE isActive = 1 ORDER BY displayOrder ASC',
+      'SELECT * FROM landing_featured WHERE is_active = true ORDER BY display_order ASC',
     );
     return featured;
   }

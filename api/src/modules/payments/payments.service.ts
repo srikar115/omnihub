@@ -13,7 +13,7 @@ export class PaymentsService {
 
   async getSubscriptionPlans() {
     const plans = await this.db.getAll<any>(
-      'SELECT * FROM subscription_plans ORDER BY displayOrder ASC',
+      'SELECT * FROM subscription_plans ORDER BY display_order ASC',
     );
     return plans.map((p) => ({
       ...p,
@@ -26,7 +26,7 @@ export class PaymentsService {
     const plan = await this.db.getOne<any>('SELECT * FROM subscription_plans WHERE id = ?', [planId]);
     if (!plan) throw new BadRequestException('Plan not found');
 
-    const amount = billingCycle === 'yearly' ? plan.priceYearly : plan.priceMonthly;
+    const amount = billingCycle === 'yearly' ? plan.price_yearly : plan.price_monthly;
 
     return {
       orderId: `order_${uuidv4().substring(0, 8)}`,
@@ -44,8 +44,8 @@ export class PaymentsService {
     // In real implementation, verify signature with Razorpay
     // For now, just record the payment
     await this.db.run(
-      `INSERT INTO payments (id, userId, amount, type, razorpayPaymentId, razorpayOrderId, status, createdAt)
-       VALUES (?, ?, ?, 'subscription', ?, ?, 'completed', datetime('now'))`,
+      `INSERT INTO payments (id, user_id, amount, type, razorpay_payment_id, razorpay_order_id, status, created_at)
+       VALUES (?, ?, ?, 'subscription', ?, ?, 'completed', NOW())`,
       [uuidv4(), userId, 0, razorpay_payment_id, razorpay_order_id],
     );
 

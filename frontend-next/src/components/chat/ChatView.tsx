@@ -393,7 +393,7 @@ export function ChatView({ user, updateUserCredits, showAuthModal }: ChatViewPro
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
               <CreditCard className="w-4 h-4" />
-              <span className="font-mono text-cyan-400">{user?.credits?.toFixed(2)}</span>
+              <span className="font-mono text-cyan-400">{(parseFloat(String(user?.credits)) || 0).toFixed(2)}</span>
             </div>
             
             <button

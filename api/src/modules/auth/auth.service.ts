@@ -70,20 +70,20 @@ export class AuthService {
   private async ensureDefaultWorkspace(userId: string, userName: string): Promise<any> {
     try {
       let existing = await this.db.getOne<any>(
-        'SELECT * FROM workspaces WHERE ownerId = ? AND isDefault = 1',
+        'SELECT * FROM workspaces WHERE owner_id = ? AND is_default = true',
         [userId],
       );
 
       if (!existing) {
         const workspaceId = uuidv4();
         await this.db.run(
-          `INSERT INTO workspaces (id, name, ownerId, credits, creditMode, isDefault)
-           VALUES (?, ?, ?, 0, 'user', 1)`,
+          `INSERT INTO workspaces (id, name, owner_id, credits, credit_mode, is_default)
+           VALUES (?, ?, ?, 0, 'user', true)`,
           [workspaceId, `${userName}'s Workspace`, userId],
         );
 
         await this.db.run(
-          `INSERT INTO workspace_members (id, workspaceId, userId, role, allocatedCredits)
+          `INSERT INTO workspace_members (id, workspace_id, user_id, role, allocated_credits)
            VALUES (?, ?, ?, 'owner', 0)`,
           [uuidv4(), workspaceId, userId],
         );
@@ -91,10 +91,10 @@ export class AuthService {
         existing = await this.db.getOne<any>('SELECT * FROM workspaces WHERE id = ?', [workspaceId]);
       }
 
-      if (existing?.privacySettings) {
-        existing.privacySettings = typeof existing.privacySettings === 'string'
-          ? JSON.parse(existing.privacySettings)
-          : existing.privacySettings;
+      if (existing?.privacy_settings) {
+        existing.privacySettings = typeof existing.privacy_settings === 'string'
+          ? JSON.parse(existing.privacy_settings)
+          : existing.privacy_settings;
       }
 
       return existing;
@@ -128,7 +128,7 @@ export class AuthService {
 
     // Insert user
     await this.db.run(
-      `INSERT INTO users (id, email, password, name, credits, nickname, authProvider)
+      `INSERT INTO users (id, email, password, name, credits, nickname, auth_provider)
        VALUES (?, ?, ?, ?, ?, ?, 'email')`,
       [userId, email, hashedPassword, name, freeCredits, nickname],
     );
@@ -165,7 +165,7 @@ export class AuthService {
       name: string;
       credits: number;
       nickname: string;
-      avatarUrl: string;
+      avatar_url: string;
     }>('SELECT * FROM users WHERE email = ?', [email]);
 
     if (!user) {
@@ -223,9 +223,9 @@ export class AuthService {
       const { sub: googleId, email, name: rawName, picture } = payload;
       const name = rawName || email?.split('@')[0] || 'User';
 
-      // Check if user exists with this googleId
+      // Check if user exists with this google_id
       let user = await this.db.getOne<any>(
-        'SELECT * FROM users WHERE googleId = ?',
+        'SELECT * FROM users WHERE google_id = ?',
         [googleId],
       );
 
@@ -236,11 +236,11 @@ export class AuthService {
         if (user) {
           // Link Google account to existing user
           await this.db.run(
-            'UPDATE users SET googleId = ?, authProvider = ?, avatarUrl = COALESCE(avatarUrl, ?) WHERE id = ?',
+            'UPDATE users SET google_id = ?, auth_provider = ?, avatar_url = COALESCE(avatar_url, ?) WHERE id = ?',
             [googleId, 'google', picture, user.id],
           );
-          user.googleId = googleId;
-          user.authProvider = 'google';
+          user.google_id = googleId;
+          user.auth_provider = 'google';
         } else {
           // Create new user with Google account
           const userId = uuidv4();
@@ -248,7 +248,7 @@ export class AuthService {
           const nickname = this.generateNickname();
 
           await this.db.run(
-            `INSERT INTO users (id, email, name, googleId, authProvider, avatarUrl, credits, nickname)
+            `INSERT INTO users (id, email, name, google_id, auth_provider, avatar_url, credits, nickname)
              VALUES (?, ?, ?, ?, 'google', ?, ?, ?)`,
             [userId, email, name, googleId, picture, freeCredits, nickname],
           );
@@ -257,9 +257,9 @@ export class AuthService {
             id: userId,
             email,
             name,
-            googleId,
-            authProvider: 'google',
-            avatarUrl: picture,
+            google_id: googleId,
+            auth_provider: 'google',
+            avatar_url: picture,
             credits: freeCredits,
             nickname,
           };
@@ -282,7 +282,7 @@ export class AuthService {
           email: user.email,
           name: user.name,
           credits: user.credits,
-          avatarUrl: user.avatarUrl,
+          avatarUrl: user.avatar_url,
         },
         defaultWorkspace,
       };
@@ -301,8 +301,8 @@ export class AuthService {
       email: string;
       name: string;
       credits: number;
-      createdAt: string;
-    }>('SELECT id, email, name, credits, createdAt FROM users WHERE id = ?', [userId]);
+      created_at: string;
+    }>('SELECT id, email, name, credits, created_at FROM users WHERE id = ?', [userId]);
 
     if (!user) {
       throw new UnauthorizedException('User not found');
@@ -313,23 +313,25 @@ export class AuthService {
 
     // Get all workspaces user is a member of (with full data like Express)
     const workspaces = await this.db.getAll<any>(
-      `SELECT w.*, wm.role as userRole
+      `SELECT w.*, wm.role as user_role
        FROM workspaces w
-       JOIN workspace_members wm ON w.id = wm.workspaceId AND wm.userId = ?
-       ORDER BY w.isDefault DESC, w.updatedAt DESC`,
+       JOIN workspace_members wm ON w.id = wm.workspace_id AND wm.user_id = ?
+       ORDER BY w.is_default DESC, w.updated_at DESC`,
       [userId],
     );
 
     // Parse privacySettings for each workspace
     const parsedWorkspaces = workspaces.map((w) => ({
       ...w,
-      privacySettings: typeof w.privacySettings === 'string'
-        ? JSON.parse(w.privacySettings || '{}')
-        : w.privacySettings || {},
+      isDefault: w.is_default,
+      userRole: w.user_role,
+      privacySettings: typeof w.privacy_settings === 'string'
+        ? JSON.parse(w.privacy_settings || '{}')
+        : w.privacy_settings || {},
     }));
 
-    // defaultWorkspace is first workspace with isDefault=1 or first in array
-    const defaultWorkspace = parsedWorkspaces.find((w) => w.isDefault) || parsedWorkspaces[0] || null;
+    // defaultWorkspace is first workspace with is_default=true or first in array
+    const defaultWorkspace = parsedWorkspaces.find((w) => w.is_default) || parsedWorkspaces[0] || null;
 
     return {
       ...user,

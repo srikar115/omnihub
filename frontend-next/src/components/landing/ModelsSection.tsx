@@ -131,7 +131,7 @@ export function ModelsSection() {
                       {model.providerName || 'AI Model'}
                     </span>
                     <span className="text-xs text-cyan-400 font-mono">
-                      {model.credits?.toFixed(2)} cr
+                      {(parseFloat(String(model.credits)) || 0).toFixed(2)} cr
                     </span>
                   </div>
                 </div>

@@ -47,7 +47,7 @@ export class GenerationsService {
    * Calculate price for generation
    */
   private async calculatePrice(model: any, options: Record<string, any> = {}): Promise<number> {
-    let price = model.baseCost || model.credits || 0;
+    let price = model.base_cost || model.credits || 0;
     const modelOptions =
       typeof model.options === 'string' ? JSON.parse(model.options) : model.options || {};
 
@@ -116,9 +116,9 @@ export class GenerationsService {
 
     await this.db.run(
       `INSERT INTO generations (
-        id, visibleId, userId, workspaceId, type, model, modelName,
-        prompt, options, credits, status, startedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))`,
+        id, visible_id, user_id, workspace_id, type, model, model_name,
+        prompt, options, credits, status, started_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW())`,
       [
         genId,
         visibleId,
@@ -161,7 +161,7 @@ export class GenerationsService {
   async findAll(userId: string, dto: ListGenerationsDto) {
     const { type, workspaceId, limit = 50, offset = 0 } = dto;
 
-    let query = `SELECT * FROM generations WHERE userId = ?`;
+    let query = `SELECT * FROM generations WHERE user_id = ?`;
     const params: any[] = [userId];
 
     // Build workspace filter clause
@@ -171,25 +171,25 @@ export class GenerationsService {
     // Filter by workspace with improved logic for default workspaces
     if (workspaceId) {
       // Check if this is the user's default workspace
-      const workspace = await this.db.getOne<{ isDefault: number }>(
-        `SELECT w.isDefault FROM workspaces w
-         JOIN workspace_members wm ON w.id = wm.workspaceId
-         WHERE w.id = ? AND wm.userId = ?`,
+      const workspace = await this.db.getOne<{ is_default: boolean }>(
+        `SELECT w.is_default FROM workspaces w
+         JOIN workspace_members wm ON w.id = wm.workspace_id
+         WHERE w.id = ? AND wm.user_id = ?`,
         [workspaceId, userId],
       );
 
-      if (workspace && workspace.isDefault) {
-        // For default workspace, include: workspaceId matches OR workspaceId is NULL (legacy generations)
-        workspaceFilter = " AND (workspaceId = ? OR workspaceId IS NULL OR workspaceId = '')";
+      if (workspace && workspace.is_default) {
+        // For default workspace, include: workspace_id matches OR workspace_id is NULL (legacy generations)
+        workspaceFilter = " AND (workspace_id = ? OR workspace_id IS NULL OR workspace_id = '')";
         workspaceParams.push(workspaceId);
       } else {
-        // For non-default workspaces, only show generations with matching workspaceId
-        workspaceFilter = ' AND workspaceId = ?';
+        // For non-default workspaces, only show generations with matching workspace_id
+        workspaceFilter = ' AND workspace_id = ?';
         workspaceParams.push(workspaceId);
       }
     } else {
       // No workspaceId provided - show only generations without workspace (legacy)
-      workspaceFilter = " AND (workspaceId IS NULL OR workspaceId = '')";
+      workspaceFilter = " AND (workspace_id IS NULL OR workspace_id = '')";
     }
 
     query += workspaceFilter;
@@ -200,7 +200,7 @@ export class GenerationsService {
       params.push(type);
     }
 
-    query += ' ORDER BY startedAt DESC LIMIT ? OFFSET ?';
+    query += ' ORDER BY started_at DESC LIMIT ? OFFSET ?';
     params.push(limit, offset);
 
     const generations = await this.db.getAll<any>(query, params);
@@ -208,11 +208,19 @@ export class GenerationsService {
     // Parse JSON fields
     const parsedGenerations = generations.map((gen) => ({
       ...gen,
+      visibleId: gen.visible_id,
+      userId: gen.user_id,
+      workspaceId: gen.workspace_id,
+      modelName: gen.model_name,
+      thumbnailUrl: gen.thumbnail_url,
+      errorType: gen.error_type,
+      startedAt: gen.started_at,
+      completedAt: gen.completed_at,
       options: typeof gen.options === 'string' ? JSON.parse(gen.options) : gen.options,
     }));
 
     // Get counts by type (filtered by same workspace logic)
-    let countQuery = 'SELECT type, COUNT(*) as count FROM generations WHERE userId = ?';
+    let countQuery = 'SELECT type, COUNT(*) as count FROM generations WHERE user_id = ?';
     const countParams: any[] = [userId];
     countQuery += workspaceFilter;
     countParams.push(...workspaceParams);
@@ -232,7 +240,7 @@ export class GenerationsService {
    */
   async findOne(userId: string, id: string) {
     const generation = await this.db.getOne<any>(
-      'SELECT * FROM generations WHERE id = ? AND userId = ?',
+      'SELECT * FROM generations WHERE id = ? AND user_id = ?',
       [id, userId],
     );
 
@@ -242,6 +250,10 @@ export class GenerationsService {
 
     return {
       ...generation,
+      visibleId: generation.visible_id,
+      userId: generation.user_id,
+      workspaceId: generation.workspace_id,
+      modelName: generation.model_name,
       options: typeof generation.options === 'string' ? JSON.parse(generation.options) : generation.options,
     };
   }
@@ -251,7 +263,7 @@ export class GenerationsService {
    */
   async remove(userId: string, id: string) {
     const generation = await this.db.getOne<any>(
-      'SELECT * FROM generations WHERE id = ? AND userId = ?',
+      'SELECT * FROM generations WHERE id = ? AND user_id = ?',
       [id, userId],
     );
 
@@ -269,7 +281,7 @@ export class GenerationsService {
    */
   async cancel(userId: string, id: string) {
     const generation = await this.db.getOne<any>(
-      'SELECT * FROM generations WHERE id = ? AND userId = ?',
+      'SELECT * FROM generations WHERE id = ? AND user_id = ?',
       [id, userId],
     );
 
@@ -283,7 +295,7 @@ export class GenerationsService {
 
     // Update status
     await this.db.run(
-      `UPDATE generations SET status = 'cancelled', completedAt = datetime('now') WHERE id = ?`,
+      `UPDATE generations SET status = 'cancelled', completed_at = NOW() WHERE id = ?`,
       [id],
     );
 
@@ -305,7 +317,7 @@ export class GenerationsService {
     // Verify all generations belong to user
     const placeholders = ids.map(() => '?').join(', ');
     const generations = await this.db.getAll<any>(
-      `SELECT id FROM generations WHERE id IN (${placeholders}) AND userId = ?`,
+      `SELECT id FROM generations WHERE id IN (${placeholders}) AND user_id = ?`,
       [...ids, userId],
     );
 
@@ -324,7 +336,7 @@ export class GenerationsService {
    */
   async share(userId: string, id: string, dto: ShareGenerationDto) {
     const generation = await this.db.getOne<any>(
-      'SELECT * FROM generations WHERE id = ? AND userId = ?',
+      'SELECT * FROM generations WHERE id = ? AND user_id = ?',
       [id, userId],
     );
 
@@ -332,8 +344,8 @@ export class GenerationsService {
       throw new NotFoundException('Generation not found');
     }
 
-    await this.db.run('UPDATE generations SET sharedWithWorkspace = ? WHERE id = ?', [
-      dto.sharedWithWorkspace ? 1 : 0,
+    await this.db.run('UPDATE generations SET shared_with_workspace = ? WHERE id = ?', [
+      dto.sharedWithWorkspace ? true : false,
       id,
     ]);
 

@@ -22,11 +22,14 @@ export class ChatService {
    */
   async getModels() {
     const models = await this.db.getAll<any>(
-      `SELECT * FROM models WHERE type = 'chat' AND enabled = 1 ORDER BY displayOrder ASC`,
+      `SELECT * FROM models WHERE type = 'chat' AND enabled = true ORDER BY display_order ASC`,
     );
 
     return models.map((model) => ({
       ...model,
+      displayOrder: model.display_order,
+      inputCost: model.input_cost,
+      outputCost: model.output_cost,
       options: typeof model.options === 'string' ? JSON.parse(model.options) : model.options,
       capabilities:
         typeof model.capabilities === 'string'
@@ -51,8 +54,8 @@ export class ChatService {
     const totalInputTokens = inputTokens + imageTokens;
     const estimatedOutputTokens = 500; // Average response
 
-    const inputCost = (totalInputTokens / 1000000) * (model.inputCost || 0);
-    const outputCost = (estimatedOutputTokens / 1000000) * (model.outputCost || 0);
+    const inputCost = (totalInputTokens / 1000000) * (model.input_cost || 0);
+    const outputCost = (estimatedOutputTokens / 1000000) * (model.output_cost || 0);
 
     return {
       modelId: dto.modelId,
@@ -67,7 +70,7 @@ export class ChatService {
    */
   async listConversations(userId: string) {
     const conversations = await this.db.getAll<any>(
-      `SELECT * FROM conversations WHERE userId = ? ORDER BY updatedAt DESC`,
+      `SELECT * FROM conversations WHERE user_id = ? ORDER BY updated_at DESC`,
       [userId],
     );
 
@@ -82,8 +85,8 @@ export class ChatService {
     const model = dto.modelId ? await this.db.getOne<any>('SELECT name FROM models WHERE id = ?', [dto.modelId]) : null;
 
     await this.db.run(
-      `INSERT INTO conversations (id, userId, title, modelId, modelName, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      `INSERT INTO conversations (id, user_id, title, model_id, model_name, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
       [id, userId, dto.title || 'New Chat', dto.modelId || null, model?.name || null],
     );
 
@@ -96,7 +99,7 @@ export class ChatService {
    */
   async getConversation(userId: string, id: string) {
     const conversation = await this.db.getOne<any>(
-      `SELECT * FROM conversations WHERE id = ? AND userId = ?`,
+      `SELECT * FROM conversations WHERE id = ? AND user_id = ?`,
       [id, userId],
     );
 
@@ -105,7 +108,7 @@ export class ChatService {
     }
 
     const messages = await this.db.getAll<any>(
-      `SELECT * FROM messages WHERE conversationId = ? ORDER BY createdAt ASC`,
+      `SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC`,
       [id],
     );
 
@@ -113,8 +116,12 @@ export class ChatService {
       ...conversation,
       messages: messages.map((msg) => ({
         ...msg,
+        conversationId: msg.conversation_id,
+        inputTokens: msg.input_tokens,
+        outputTokens: msg.output_tokens,
+        createdAt: msg.created_at,
         imageUrls:
-          typeof msg.imageUrls === 'string' ? JSON.parse(msg.imageUrls) : msg.imageUrls || [],
+          typeof msg.image_urls === 'string' ? JSON.parse(msg.image_urls) : msg.image_urls || [],
       })),
     };
   }
@@ -124,7 +131,7 @@ export class ChatService {
    */
   async updateConversation(userId: string, id: string, dto: UpdateConversationDto) {
     const conversation = await this.db.getOne<any>(
-      `SELECT * FROM conversations WHERE id = ? AND userId = ?`,
+      `SELECT * FROM conversations WHERE id = ? AND user_id = ?`,
       [id, userId],
     );
 
@@ -134,7 +141,7 @@ export class ChatService {
 
     if (dto.title) {
       await this.db.run(
-        `UPDATE conversations SET title = ?, updatedAt = datetime('now') WHERE id = ?`,
+        `UPDATE conversations SET title = ?, updated_at = NOW() WHERE id = ?`,
         [dto.title, id],
       );
     }
@@ -147,7 +154,7 @@ export class ChatService {
    */
   async deleteConversation(userId: string, id: string) {
     const conversation = await this.db.getOne<any>(
-      `SELECT * FROM conversations WHERE id = ? AND userId = ?`,
+      `SELECT * FROM conversations WHERE id = ? AND user_id = ?`,
       [id, userId],
     );
 
@@ -155,7 +162,7 @@ export class ChatService {
       throw new NotFoundException('Conversation not found');
     }
 
-    await this.db.run('DELETE FROM messages WHERE conversationId = ?', [id]);
+    await this.db.run('DELETE FROM messages WHERE conversation_id = ?', [id]);
     await this.db.run('DELETE FROM conversations WHERE id = ?', [id]);
 
     return { success: true };
@@ -166,7 +173,7 @@ export class ChatService {
    */
   async sendMessage(userId: string, conversationId: string, dto: SendMessageDto) {
     const conversation = await this.db.getOne<any>(
-      `SELECT * FROM conversations WHERE id = ? AND userId = ?`,
+      `SELECT * FROM conversations WHERE id = ? AND user_id = ?`,
       [conversationId, userId],
     );
 
@@ -182,20 +189,20 @@ export class ChatService {
 
     // Get model
     const model = await this.db.getOne<any>('SELECT * FROM models WHERE id = ?', [
-      conversation.modelId || 'openai/gpt-4o-mini',
+      conversation.model_id || 'openai/gpt-4o-mini',
     ]);
 
     // Save user message
     const userMsgId = uuidv4();
     await this.db.run(
-      `INSERT INTO messages (id, conversationId, role, content, imageUrls, createdAt)
-       VALUES (?, ?, 'user', ?, ?, datetime('now'))`,
+      `INSERT INTO messages (id, conversation_id, role, content, image_urls, created_at)
+       VALUES (?, ?, 'user', ?, ?, NOW())`,
       [userMsgId, conversationId, dto.content, JSON.stringify(dto.imageUrls || [])],
     );
 
     // Get conversation history
     const history = await this.db.getAll<any>(
-      `SELECT role, content FROM messages WHERE conversationId = ? ORDER BY createdAt ASC`,
+      `SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC`,
       [conversationId],
     );
 
@@ -204,7 +211,7 @@ export class ChatService {
       const response = await axios.post(
         'https://openrouter.ai/api/v1/chat/completions',
         {
-          model: model?.apiEndpoint || 'openai/gpt-4o-mini',
+          model: model?.api_endpoint || 'openai/gpt-4o-mini',
           messages: history.map((m) => ({ role: m.role, content: m.content })),
         },
         {
@@ -221,8 +228,8 @@ export class ChatService {
       // Save assistant message
       const assistantMsgId = uuidv4();
       await this.db.run(
-        `INSERT INTO messages (id, conversationId, role, content, inputTokens, outputTokens, createdAt)
-         VALUES (?, ?, 'assistant', ?, ?, ?, datetime('now'))`,
+        `INSERT INTO messages (id, conversation_id, role, content, input_tokens, output_tokens, created_at)
+         VALUES (?, ?, 'assistant', ?, ?, ?, NOW())`,
         [
           assistantMsgId,
           conversationId,
@@ -234,9 +241,9 @@ export class ChatService {
 
       // Update conversation
       await this.db.run(
-        `UPDATE conversations SET updatedAt = datetime('now'),
-         totalInputTokens = totalInputTokens + ?,
-         totalOutputTokens = totalOutputTokens + ?
+        `UPDATE conversations SET updated_at = NOW(),
+         total_input_tokens = total_input_tokens + ?,
+         total_output_tokens = total_output_tokens + ?
          WHERE id = ?`,
         [usage.prompt_tokens || 0, usage.completion_tokens || 0, conversationId],
       );

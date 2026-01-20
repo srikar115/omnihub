@@ -214,7 +214,7 @@ export function MultiModelSettingsModal({
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-sm font-mono text-green-400">
-                      {calculateUserCredits(model, model.credits * (generationType === 'image' ? (parseInt(modelSettings[model.id]?.num_images) || 1) : 1)).toFixed(1)} credits
+                      {(parseFloat(String(calculateUserCredits(model, (parseFloat(String(model.credits)) || 0) * (generationType === 'image' ? (parseInt(modelSettings[model.id]?.num_images) || 1) : 1)))) || 0).toFixed(1)} credits
                     </span>
                     {hasOptions && (
                       <ChevronDown className={`w-4 h-4 text-[var(--text-muted)] transition-transform ${isExpanded ? 'rotate-180' : ''}`} />

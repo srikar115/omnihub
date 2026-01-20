@@ -10,14 +10,16 @@ export class UpscaleService {
    */
   async getModels(type?: string) {
     const models = await this.db.getAll<any>(
-      `SELECT id, name, provider, type, credits, options, providerName, docUrl, tags
-       FROM models WHERE enabled = 1 AND category = 'upscale'
-       ORDER BY displayOrder`,
+      `SELECT id, name, provider, type, credits, options, provider_name, doc_url, tags
+       FROM models WHERE enabled = true AND category = 'upscale'
+       ORDER BY display_order`,
     );
 
     // Parse JSON fields
     const parsedModels = models.map((m) => ({
       ...m,
+      providerName: m.provider_name,
+      docUrl: m.doc_url,
       options: typeof m.options === 'string' ? JSON.parse(m.options || '{}') : m.options || {},
       tags: typeof m.tags === 'string' ? JSON.parse(m.tags || '[]') : m.tags || [],
     }));
@@ -41,7 +43,7 @@ export class UpscaleService {
   ) {
     // Get source generation to determine type
     const sourceGen = await this.db.getOne<any>(
-      'SELECT * FROM generations WHERE id = ? AND userId = ?',
+      'SELECT * FROM generations WHERE id = ? AND user_id = ?',
       [data.generationId, userId],
     );
 
@@ -55,7 +57,7 @@ export class UpscaleService {
     }
 
     // Calculate price with options (matches Express calculatePrice)
-    let price = model.credits || model.baseCost || 0;
+    let price = model.credits || model.base_cost || 0;
     const modelOptions = typeof model.options === 'string' ? JSON.parse(model.options) : model.options || {};
 
     if (data.options) {

@@ -189,7 +189,7 @@ export default function WorkspaceGallery({ workspace, onSelectGeneration }: Work
                         {gen.credits !== undefined && (
                           <span className="flex items-center gap-1">
                             <CreditCard className="w-3 h-3" />
-                            {gen.credits?.toFixed(3)}
+                            {(parseFloat(String(gen.credits)) || 0).toFixed(3)}
                           </span>
                         )}
                       </div>

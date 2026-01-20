@@ -258,7 +258,7 @@ function MessageBubble({ message, onCopy }: { message: Message; onCopy: (text: s
             {message.credits !== undefined && (
               <span className="text-xs text-[var(--text-muted)] flex items-center gap-1">
                 <CreditCard className="w-3 h-3" />
-                {message.credits.toFixed(4)}
+                {(parseFloat(String(message.credits)) || 0).toFixed(4)}
               </span>
             )}
             {message.createdAt && (

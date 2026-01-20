@@ -470,7 +470,7 @@ export function GenerationModal({
                   )}
                   <div className="bg-[var(--bg-primary)] rounded-lg p-2">
                     <p className="text-xs text-[var(--text-muted)]">Credits</p>
-                    <p className="font-mono text-cyan-400">${generation.credits?.toFixed(4)}</p>
+                    <p className="font-mono text-cyan-400">${(parseFloat(String(generation.credits)) || 0).toFixed(4)}</p>
                   </div>
                   {options.seed && (
                     <div className="bg-[var(--bg-primary)] rounded-lg p-2">

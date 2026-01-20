@@ -35,27 +35,31 @@ export class WorkspacesService {
     const userCredits = user?.credits || 0;
 
     const workspaces = await this.db.getAll<any>(
-      `SELECT w.*, wm.role as userRole, wm.allocatedCredits,
-              (SELECT COUNT(*) FROM workspace_members WHERE workspaceId = w.id) as memberCount
+      `SELECT w.*, wm.role as user_role, wm.allocated_credits,
+              (SELECT COUNT(*) FROM workspace_members WHERE workspace_id = w.id) as member_count
        FROM workspaces w
-       JOIN workspace_members wm ON w.id = wm.workspaceId
-       WHERE wm.userId = ?
-       ORDER BY w.isDefault DESC, w.updatedAt DESC`,
+       JOIN workspace_members wm ON w.id = wm.workspace_id
+       WHERE wm.user_id = ?
+       ORDER BY w.is_default DESC, w.updated_at DESC`,
       [userId],
     );
 
     return workspaces.map((ws) => {
       const privacySettings =
-        typeof ws.privacySettings === 'string'
-          ? JSON.parse(ws.privacySettings)
-          : ws.privacySettings || {};
+        typeof ws.privacy_settings === 'string'
+          ? JSON.parse(ws.privacy_settings)
+          : ws.privacy_settings || {};
 
       // For default/personal workspaces, show user's personal credits
       // For team workspaces, show workspace shared credits
-      const displayCredits = ws.isDefault ? userCredits : (ws.credits || 0);
+      const displayCredits = ws.is_default ? userCredits : (ws.credits || 0);
 
       return {
         ...ws,
+        isDefault: ws.is_default,
+        userRole: ws.user_role,
+        allocatedCredits: ws.allocated_credits,
+        memberCount: ws.member_count,
         privacySettings,
         displayCredits,
       };
@@ -73,15 +77,15 @@ export class WorkspacesService {
     const id = uuidv4();
 
     await this.db.run(
-      `INSERT INTO workspaces (id, name, ownerId, credits, creditMode, isDefault, createdAt, updatedAt)
-       VALUES (?, ?, ?, 0, 'shared', 0, datetime('now'), datetime('now'))`,
+      `INSERT INTO workspaces (id, name, owner_id, credits, credit_mode, is_default, created_at, updated_at)
+       VALUES (?, ?, ?, 0, 'shared', false, NOW(), NOW())`,
       [id, dto.name.trim(), userId],
     );
 
     // Add creator as owner
     await this.db.run(
-      `INSERT INTO workspace_members (id, workspaceId, userId, role, allocatedCredits, joinedAt)
-       VALUES (?, ?, ?, 'owner', 0, datetime('now'))`,
+      `INSERT INTO workspace_members (id, workspace_id, user_id, role, allocated_credits, joined_at)
+       VALUES (?, ?, ?, 'owner', 0, NOW())`,
       [uuidv4(), id, userId],
     );
 
@@ -90,9 +94,9 @@ export class WorkspacesService {
     return {
       ...workspace,
       privacySettings:
-        typeof workspace.privacySettings === 'string'
-          ? JSON.parse(workspace.privacySettings || '{}')
-          : workspace.privacySettings || {},
+        typeof workspace.privacy_settings === 'string'
+          ? JSON.parse(workspace.privacy_settings || '{}')
+          : workspace.privacy_settings || {},
     };
   }
 
@@ -108,26 +112,26 @@ export class WorkspacesService {
 
     // Check if user is a member or owner
     const member = await this.db.getOne<any>(
-      'SELECT * FROM workspace_members WHERE workspaceId = ? AND userId = ?',
+      'SELECT * FROM workspace_members WHERE workspace_id = ? AND user_id = ?',
       [id, userId],
     );
 
-    if (!member && workspace.ownerId !== userId) {
+    if (!member && workspace.owner_id !== userId) {
       throw new ForbiddenException('Not a member of this workspace');
     }
 
     // Get member count
     const memberCount = await this.db.getOne<{ count: number }>(
-      'SELECT COUNT(*) as count FROM workspace_members WHERE workspaceId = ?',
+      'SELECT COUNT(*) as count FROM workspace_members WHERE workspace_id = ?',
       [id],
     );
 
     return {
       ...workspace,
       privacySettings:
-        typeof workspace.privacySettings === 'string'
-          ? JSON.parse(workspace.privacySettings)
-          : workspace.privacySettings || {},
+        typeof workspace.privacy_settings === 'string'
+          ? JSON.parse(workspace.privacy_settings)
+          : workspace.privacy_settings || {},
       userRole: member?.role || 'owner',
       memberCount: memberCount?.count || 0,
     };
@@ -138,7 +142,7 @@ export class WorkspacesService {
    */
   async update(userId: string, id: string, dto: UpdateWorkspaceDto) {
     const member = await this.db.getOne<any>(
-      'SELECT * FROM workspace_members WHERE workspaceId = ? AND userId = ?',
+      'SELECT * FROM workspace_members WHERE workspace_id = ? AND user_id = ?',
       [id, userId],
     );
 
@@ -154,16 +158,16 @@ export class WorkspacesService {
       params.push(dto.name);
     }
     if (dto.creditMode) {
-      updates.push('creditMode = ?');
+      updates.push('credit_mode = ?');
       params.push(dto.creditMode);
     }
     if (dto.privacySettings) {
-      updates.push('privacySettings = ?');
+      updates.push('privacy_settings = ?');
       params.push(JSON.stringify(dto.privacySettings));
     }
 
     if (updates.length > 0) {
-      updates.push("updatedAt = datetime('now')");
+      updates.push('updated_at = NOW()');
       params.push(id);
 
       await this.db.run(`UPDATE workspaces SET ${updates.join(', ')} WHERE id = ?`, params);
@@ -177,7 +181,7 @@ export class WorkspacesService {
    */
   async remove(userId: string, id: string) {
     const workspace = await this.db.getOne<any>(
-      'SELECT * FROM workspaces WHERE id = ? AND ownerId = ?',
+      'SELECT * FROM workspaces WHERE id = ? AND owner_id = ?',
       [id, userId],
     );
 
@@ -185,12 +189,12 @@ export class WorkspacesService {
       throw new ForbiddenException('Only owner can delete workspace');
     }
 
-    if (workspace.isDefault) {
+    if (workspace.is_default) {
       throw new BadRequestException('Cannot delete default workspace');
     }
 
-    await this.db.run('DELETE FROM workspace_members WHERE workspaceId = ?', [id]);
-    await this.db.run('DELETE FROM workspace_invites WHERE workspaceId = ?', [id]);
+    await this.db.run('DELETE FROM workspace_members WHERE workspace_id = ?', [id]);
+    await this.db.run('DELETE FROM workspace_invites WHERE workspace_id = ?', [id]);
     await this.db.run('DELETE FROM workspaces WHERE id = ?', [id]);
 
     return { success: true };
@@ -202,7 +206,7 @@ export class WorkspacesService {
   async listMembers(userId: string, workspaceId: string) {
     // Verify user is a member
     const member = await this.db.getOne<any>(
-      'SELECT * FROM workspace_members WHERE workspaceId = ? AND userId = ?',
+      'SELECT * FROM workspace_members WHERE workspace_id = ? AND user_id = ?',
       [workspaceId, userId],
     );
 
@@ -211,10 +215,10 @@ export class WorkspacesService {
     }
 
     const members = await this.db.getAll<any>(
-      `SELECT wm.*, u.name, u.email, u.avatarUrl
+      `SELECT wm.*, u.name, u.email, u.avatar_url
        FROM workspace_members wm
-       JOIN users u ON wm.userId = u.id
-       WHERE wm.workspaceId = ?`,
+       JOIN users u ON wm.user_id = u.id
+       WHERE wm.workspace_id = ?`,
       [workspaceId],
     );
 
@@ -226,7 +230,7 @@ export class WorkspacesService {
    */
   async inviteMember(userId: string, workspaceId: string, dto: InviteMemberDto) {
     const member = await this.db.getOne<any>(
-      'SELECT * FROM workspace_members WHERE workspaceId = ? AND userId = ?',
+      'SELECT * FROM workspace_members WHERE workspace_id = ? AND user_id = ?',
       [workspaceId, userId],
     );
 
@@ -238,8 +242,8 @@ export class WorkspacesService {
     const inviteId = uuidv4();
 
     await this.db.run(
-      `INSERT INTO workspace_invites (id, workspaceId, invitedEmail, invitedBy, token, status, createdAt)
-       VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'))`,
+      `INSERT INTO workspace_invites (id, workspace_id, invited_email, invited_by, token, status, created_at)
+       VALUES (?, ?, ?, ?, ?, 'pending', NOW())`,
       [inviteId, workspaceId, dto.email, userId, token],
     );
 
@@ -257,9 +261,9 @@ export class WorkspacesService {
    */
   async getInvite(token: string) {
     const invite = await this.db.getOne<any>(
-      `SELECT wi.*, w.name as workspaceName
+      `SELECT wi.*, w.name as workspace_name
        FROM workspace_invites wi
-       JOIN workspaces w ON wi.workspaceId = w.id
+       JOIN workspaces w ON wi.workspace_id = w.id
        WHERE wi.token = ? AND wi.status = 'pending'`,
       [token],
     );
@@ -286,8 +290,8 @@ export class WorkspacesService {
 
     // Check if already a member
     const existing = await this.db.getOne<any>(
-      'SELECT * FROM workspace_members WHERE workspaceId = ? AND userId = ?',
-      [invite.workspaceId, userId],
+      'SELECT * FROM workspace_members WHERE workspace_id = ? AND user_id = ?',
+      [invite.workspace_id, userId],
     );
 
     if (existing) {
@@ -296,15 +300,15 @@ export class WorkspacesService {
 
     // Add as member
     await this.db.run(
-      `INSERT INTO workspace_members (id, workspaceId, userId, role, allocatedCredits, joinedAt)
-       VALUES (?, ?, ?, 'member', 0, datetime('now'))`,
-      [uuidv4(), invite.workspaceId, userId],
+      `INSERT INTO workspace_members (id, workspace_id, user_id, role, allocated_credits, joined_at)
+       VALUES (?, ?, ?, 'member', 0, NOW())`,
+      [uuidv4(), invite.workspace_id, userId],
     );
 
     // Update invite status
     await this.db.run(`UPDATE workspace_invites SET status = 'accepted' WHERE id = ?`, [invite.id]);
 
-    return { success: true, workspaceId: invite.workspaceId };
+    return { success: true, workspaceId: invite.workspace_id };
   }
 
   /**
@@ -317,7 +321,7 @@ export class WorkspacesService {
     dto: UpdateMemberDto,
   ) {
     const myRole = await this.db.getOne<any>(
-      'SELECT role FROM workspace_members WHERE workspaceId = ? AND userId = ?',
+      'SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?',
       [workspaceId, userId],
     );
 
@@ -326,7 +330,7 @@ export class WorkspacesService {
     }
 
     await this.db.run(
-      'UPDATE workspace_members SET role = ? WHERE workspaceId = ? AND userId = ?',
+      'UPDATE workspace_members SET role = ? WHERE workspace_id = ? AND user_id = ?',
       [dto.role, workspaceId, memberId],
     );
 
@@ -338,7 +342,7 @@ export class WorkspacesService {
    */
   async removeMember(userId: string, workspaceId: string, memberId: string) {
     const myRole = await this.db.getOne<any>(
-      'SELECT role FROM workspace_members WHERE workspaceId = ? AND userId = ?',
+      'SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?',
       [workspaceId, userId],
     );
 
@@ -347,7 +351,7 @@ export class WorkspacesService {
     }
 
     const targetMember = await this.db.getOne<any>(
-      'SELECT role FROM workspace_members WHERE workspaceId = ? AND userId = ?',
+      'SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?',
       [workspaceId, memberId],
     );
 
@@ -355,7 +359,7 @@ export class WorkspacesService {
       throw new ForbiddenException('Cannot remove workspace owner');
     }
 
-    await this.db.run('DELETE FROM workspace_members WHERE workspaceId = ? AND userId = ?', [
+    await this.db.run('DELETE FROM workspace_members WHERE workspace_id = ? AND user_id = ?', [
       workspaceId,
       memberId,
     ]);
@@ -368,7 +372,7 @@ export class WorkspacesService {
    */
   async addCredits(userId: string, workspaceId: string, dto: AddCreditsDto) {
     const member = await this.db.getOne<any>(
-      'SELECT role FROM workspace_members WHERE workspaceId = ? AND userId = ?',
+      'SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?',
       [workspaceId, userId],
     );
 
@@ -397,7 +401,7 @@ export class WorkspacesService {
    */
   async getCreditsUsage(userId: string, workspaceId: string) {
     const member = await this.db.getOne<any>(
-      'SELECT * FROM workspace_members WHERE workspaceId = ? AND userId = ?',
+      'SELECT * FROM workspace_members WHERE workspace_id = ? AND user_id = ?',
       [workspaceId, userId],
     );
 
@@ -412,10 +416,10 @@ export class WorkspacesService {
 
     // Get usage stats
     const usage = await this.db.getAll<any>(
-      `SELECT userId, SUM(credits) as totalUsed
+      `SELECT user_id, SUM(credits) as total_used
        FROM generations
-       WHERE workspaceId = ?
-       GROUP BY userId`,
+       WHERE workspace_id = ?
+       GROUP BY user_id`,
       [workspaceId],
     );
 
@@ -430,7 +434,7 @@ export class WorkspacesService {
    */
   async getGallery(userId: string, workspaceId: string, type?: string) {
     const member = await this.db.getOne<any>(
-      'SELECT * FROM workspace_members WHERE workspaceId = ? AND userId = ?',
+      'SELECT * FROM workspace_members WHERE workspace_id = ? AND user_id = ?',
       [workspaceId, userId],
     );
 
@@ -439,10 +443,10 @@ export class WorkspacesService {
     }
 
     let query = `
-      SELECT g.*, u.name as userName
+      SELECT g.*, u.name as user_name
       FROM generations g
-      JOIN users u ON g.userId = u.id
-      WHERE g.workspaceId = ? AND g.sharedWithWorkspace = 1 AND g.status = 'completed'
+      JOIN users u ON g.user_id = u.id
+      WHERE g.workspace_id = ? AND g.shared_with_workspace = true AND g.status = 'completed'
     `;
     const params: any[] = [workspaceId];
 
@@ -451,7 +455,7 @@ export class WorkspacesService {
       params.push(type);
     }
 
-    query += ' ORDER BY g.completedAt DESC LIMIT 100';
+    query += ' ORDER BY g.completed_at DESC LIMIT 100';
 
     return this.db.getAll<any>(query, params);
   }

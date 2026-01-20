@@ -271,7 +271,7 @@ function DashboardTab({ stats }: { stats: Stats | null }) {
     { label: 'Total Revenue', value: `$${stats?.revenue?.toFixed(2) || '0.00'}`, icon: DollarSign, color: 'from-green-500 to-emerald-500' },
     { label: 'Total Generations', value: stats?.totalGenerations || 0, icon: Activity, color: 'from-purple-500 to-violet-500' },
     { label: 'Active Users', value: stats?.activeUsers || stats?.totalUsers || 0, icon: Users, color: 'from-cyan-500 to-blue-500' },
-    { label: 'Credits Used', value: stats?.creditsUsed?.toFixed(2) || '0', icon: Zap, color: 'from-yellow-500 to-orange-500' },
+    { label: 'Credits Used', value: (parseFloat(String(stats?.creditsUsed)) || 0).toFixed(2), icon: Zap, color: 'from-yellow-500 to-orange-500' },
   ];
 
   const generationStats = [
@@ -541,7 +541,7 @@ function UsersTab({ users, onUpdateCredits }: { users: User[]; onUpdateCredits: 
                       </button>
                     </div>
                   ) : (
-                    <span className="text-cyan-400 font-mono">{user.credits?.toFixed(2)}</span>
+                    <span className="text-cyan-400 font-mono">{(parseFloat(String(user.credits)) || 0).toFixed(2)}</span>
                   )}
                 </td>
                 <td className="px-6 py-4 text-sm text-[var(--text-muted)]">

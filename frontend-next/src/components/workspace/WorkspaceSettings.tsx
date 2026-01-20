@@ -444,7 +444,7 @@ export default function WorkspaceSettings({
               <div className="bg-gradient-to-r from-emerald-500/10 to-teal-600/10 border border-emerald-500/30 rounded-xl p-4">
                 <div className="text-sm text-[var(--text-muted)]">Workspace Credits</div>
                 <div className="text-3xl font-bold text-emerald-400">
-                  {workspace.isDefault ? 'Uses Personal Credits' : (workspace.credits?.toFixed(2) || '0.00')}
+                  {workspace.isDefault ? 'Uses Personal Credits' : (parseFloat(String(workspace.credits)) || 0).toFixed(2)}
                 </div>
               </div>
 

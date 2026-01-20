@@ -119,7 +119,7 @@ export function WorkspaceSwitcher({
                         </span>
                         <span className="flex items-center gap-1">
                           <Zap className="w-3 h-3 text-cyan-400" />
-                          <span className="text-cyan-400 font-medium">{workspace.credits?.toFixed(2) || '0.00'}</span>
+                          <span className="text-cyan-400 font-medium">{(parseFloat(String(workspace.credits)) || 0).toFixed(2)}</span>
                         </span>
                         <span className="capitalize text-[var(--text-muted)]">
                           {workspace.userRole || 'Owner'}

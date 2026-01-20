@@ -53,7 +53,7 @@ export class ModelsService {
    * Calculate base price for model options
    */
   private calculateBasePrice(model: any, selectedOptions: Record<string, string> = {}): number {
-    let price = model.baseCost || model.credits || 0;
+    let price = model.base_cost || model.credits || 0;
     const modelOptions = typeof model.options === 'string' ? JSON.parse(model.options) : model.options || {};
 
     for (const [key, value] of Object.entries(selectedOptions)) {
@@ -91,15 +91,24 @@ export class ModelsService {
    */
   async findAll() {
     const models = await this.db.getAll<any>(
-      `SELECT id, name, provider, type, credits, baseCost, options, imageInput, maxInputImages, 
-              thumbnail, logoUrl, heading, subheading, tags, displayOrder, category, 
-              providerName, docUrl, imageParamName, imageParamType, capabilities
-       FROM models WHERE enabled = 1 ORDER BY type, displayOrder, credits`,
+      `SELECT id, name, provider, type, credits, base_cost, options, image_input, max_input_images, 
+              thumbnail, logo_url, heading, subheading, tags, display_order, category, 
+              provider_name, doc_url, image_param_name, image_param_type, capabilities
+       FROM models WHERE enabled = true ORDER BY type, display_order, credits`,
     );
 
     // Parse JSON fields (same as Express backend)
     return models.map((model) => ({
       ...model,
+      baseCost: model.base_cost,
+      imageInput: model.image_input,
+      maxInputImages: model.max_input_images,
+      logoUrl: model.logo_url,
+      displayOrder: model.display_order,
+      providerName: model.provider_name,
+      docUrl: model.doc_url,
+      imageParamName: model.image_param_name,
+      imageParamType: model.image_param_type,
       options: typeof model.options === 'string' ? JSON.parse(model.options || '{}') : model.options || {},
       tags: typeof model.tags === 'string' ? JSON.parse(model.tags || '[]') : model.tags || [],
       capabilities: typeof model.capabilities === 'string' ? JSON.parse(model.capabilities || '{}') : model.capabilities || {},
@@ -151,7 +160,7 @@ export class ModelsService {
     return {
       price: userCredits,           // User-facing credits (with margin + conversion)
       basePrice: basePrice,         // Base API cost in credits
-      baseCost: model.baseCost,     // Raw USD cost from API
+      baseCost: model.base_cost,    // Raw USD cost from API
       profitMargin: margin,
       creditPrice: creditPrice,
       // Calculation breakdown
@@ -170,7 +179,7 @@ export class ModelsService {
    */
   async findByType(type: string) {
     const models = await this.db.getAll<any>(
-      `SELECT * FROM models WHERE enabled = 1 AND type = ? ORDER BY displayOrder ASC, name ASC`,
+      `SELECT * FROM models WHERE enabled = true AND type = ? ORDER BY display_order ASC, name ASC`,
       [type],
     );
 
