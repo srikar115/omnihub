@@ -3829,6 +3829,18 @@ app.get('/api/models', (req, res) => {
   res.json(models);
 });
 
+// Public pricing settings endpoint (no auth required, excludes sensitive data)
+app.get('/api/pricing-settings', (req, res) => {
+  res.json({
+    profitMargin: parseFloat(getSetting('profitMargin')) || 0,
+    profitMarginImage: parseFloat(getSetting('profitMarginImage')) || 0,
+    profitMarginVideo: parseFloat(getSetting('profitMarginVideo')) || 0,
+    profitMarginChat: parseFloat(getSetting('profitMarginChat')) || 0,
+    creditPrice: parseFloat(getSetting('creditPrice')) || 1,
+    freeCredits: parseFloat(getSetting('freeCredits')) || 10,
+  });
+});
+
 app.post('/api/models/:id/price', (req, res) => {
   const model = getModel(req.params.id);
   if (!model) return res.status(404).json({ error: 'Model not found' });
@@ -3947,12 +3959,28 @@ app.get('/api/generations', userAuthMiddleware, (req, res) => {
   let query = 'SELECT * FROM generations WHERE userId = ?';
   const params = [req.user.id];
   
-  // Filter by workspace - if workspaceId provided, filter by it; otherwise show personal (null workspaceId)
+  // Filter by workspace
   if (workspaceId) {
-    query += ' AND workspaceId = ?';
-    params.push(workspaceId);
+    // Check if this is the user's default workspace using workspace_members join
+    // This works for both owners and members
+    const workspace = db.prepare(`
+      SELECT w.isDefault FROM workspaces w
+      JOIN workspace_members wm ON w.id = wm.workspaceId
+      WHERE w.id = ? AND wm.userId = ?
+    `).get(workspaceId, req.user.id);
+    
+    if (workspace && workspace.isDefault) {
+      // For default workspace, include both: workspaceId matches OR workspaceId is NULL (legacy generations)
+      query += " AND (workspaceId = ? OR workspaceId IS NULL OR workspaceId = '')";
+      params.push(workspaceId);
+    } else {
+      // For non-default workspaces, only show generations with matching workspaceId
+      query += ' AND workspaceId = ?';
+      params.push(workspaceId);
+    }
   } else {
-    query += ' AND (workspaceId IS NULL OR workspaceId = "")';
+    // No workspaceId provided - show only generations without workspace (legacy)
+    query += " AND (workspaceId IS NULL OR workspaceId = '')";
   }
   
   if (type) { query += ' AND type = ?'; params.push(type); }
@@ -3966,10 +3994,21 @@ app.get('/api/generations', userAuthMiddleware, (req, res) => {
   let countQuery = 'SELECT type, COUNT(*) as count FROM generations WHERE userId = ?';
   const countParams = [req.user.id];
   if (workspaceId) {
-    countQuery += ' AND workspaceId = ?';
-    countParams.push(workspaceId);
+    // Use same workspace_members join for count query
+    const workspace = db.prepare(`
+      SELECT w.isDefault FROM workspaces w
+      JOIN workspace_members wm ON w.id = wm.workspaceId
+      WHERE w.id = ? AND wm.userId = ?
+    `).get(workspaceId, req.user.id);
+    if (workspace && workspace.isDefault) {
+      countQuery += " AND (workspaceId = ? OR workspaceId IS NULL OR workspaceId = '')";
+      countParams.push(workspaceId);
+    } else {
+      countQuery += ' AND workspaceId = ?';
+      countParams.push(workspaceId);
+    }
   } else {
-    countQuery += ' AND (workspaceId IS NULL OR workspaceId = "")';
+    countQuery += " AND (workspaceId IS NULL OR workspaceId = '')";
   }
   countQuery += ' GROUP BY type';
   
@@ -4840,15 +4879,25 @@ app.post('/api/workspaces', userAuthMiddleware, (req, res) => {
 // List user's workspaces
 app.get('/api/workspaces', userAuthMiddleware, (req, res) => {
   const workspaces = db.prepare(`
-    SELECT w.*, wm.role as userRole,
+    SELECT w.*, wm.role as userRole, wm.allocatedCredits,
            (SELECT COUNT(*) FROM workspace_members WHERE workspaceId = w.id) as memberCount
     FROM workspaces w
     JOIN workspace_members wm ON w.id = wm.workspaceId AND wm.userId = ?
     ORDER BY w.isDefault DESC, w.updatedAt DESC
   `).all(req.user.id);
   
+  // Get user's personal credits for default workspace display
+  const userCredits = req.user.credits || 0;
+  
   workspaces.forEach(w => {
     w.privacySettings = JSON.parse(w.privacySettings || '{}');
+    // For default/personal workspaces, show user's personal credits
+    // For team workspaces, show workspace shared credits
+    if (w.isDefault) {
+      w.displayCredits = userCredits;
+    } else {
+      w.displayCredits = w.credits || 0;
+    }
   });
   
   res.json(workspaces);

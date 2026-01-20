@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Zap, Plus, Settings, Bell, Sun, Moon, Building2 } from 'lucide-react';
+import { Zap, Plus, Settings, Bell, Sun, Moon, Building2, User as UserIcon } from 'lucide-react';
 import { useTheme } from '@/components/providers/ThemeProvider';
 import { WorkspaceSwitcher } from '@/components/workspace';
 
@@ -14,6 +14,7 @@ interface Workspace {
   userRole?: string;
   credits?: number;
   creditMode?: string;
+  allocatedCredits?: number; // For individual credit mode
 }
 
 interface User {
@@ -40,6 +41,35 @@ interface HeaderProps {
   onInviteUsers: (workspace: Workspace) => void;
   creditAnimation: CreditAnimation | null;
   onAddCredits: () => void;
+}
+
+// Helper to get unified credit display based on workspace context
+function getDisplayCredits(user: User | null, activeWorkspace: Workspace | null): {
+  amount: number;
+  label: string;
+  icon: 'personal' | 'workspace' | 'allocated';
+} {
+  if (!user) {
+    return { amount: 0, label: 'credits', icon: 'personal' };
+  }
+  
+  // Default workspace or no workspace - use personal credits
+  if (!activeWorkspace || activeWorkspace.isDefault) {
+    return { amount: user.credits, label: 'credits', icon: 'personal' };
+  }
+  
+  // Team workspace with individual mode - use allocated credits
+  if (activeWorkspace.creditMode === 'individual' && activeWorkspace.allocatedCredits !== undefined) {
+    return { amount: activeWorkspace.allocatedCredits, label: 'allocated', icon: 'allocated' };
+  }
+  
+  // Team workspace with shared mode - use workspace credits
+  if (activeWorkspace.credits !== undefined) {
+    return { amount: activeWorkspace.credits, label: 'workspace', icon: 'workspace' };
+  }
+  
+  // Fallback to personal credits
+  return { amount: user.credits, label: 'credits', icon: 'personal' };
 }
 
 export function Header({ 
@@ -95,20 +125,16 @@ export function Header({
           <span className="text-sm">Add Credits</span>
         </button>
         
-        {user && (
-          <div className="flex items-center gap-2">
-            {/* Workspace credits - shown when in a non-default workspace */}
-            {activeWorkspace && !activeWorkspace.isDefault && activeWorkspace.credits !== undefined && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-color)]">
-                <Building2 className="w-4 h-4 text-purple-400" />
-                <span className="text-sm font-mono font-medium text-[var(--text-primary)]">
-                  {activeWorkspace.credits?.toFixed(2)}
-                </span>
-                <span className="text-xs text-[var(--text-muted)]">workspace</span>
-              </div>
-            )}
-            
-            {/* Personal credits */}
+        {user && (() => {
+          const displayCredits = getDisplayCredits(user, activeWorkspace);
+          const CreditIcon = displayCredits.icon === 'workspace' ? Building2 
+            : displayCredits.icon === 'allocated' ? UserIcon 
+            : Zap;
+          const iconColor = displayCredits.icon === 'workspace' ? 'text-purple-400'
+            : displayCredits.icon === 'allocated' ? 'text-amber-400'
+            : 'text-cyan-400';
+          
+          return (
             <div className="relative">
               <motion.div 
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-colors border ${
@@ -121,12 +147,12 @@ export function Header({
                 animate={creditAnimation ? { scale: [1, 1.05, 1] } : {}}
                 transition={{ duration: 0.3 }}
               >
-                <Zap className={`w-4 h-4 ${
+                <CreditIcon className={`w-4 h-4 ${
                   creditAnimation?.type === 'deduct' 
                     ? 'text-red-400' 
                     : creditAnimation?.type === 'refund'
                     ? 'text-green-400'
-                    : 'text-cyan-400'
+                    : iconColor
                 }`} />
                 <span className={`text-sm font-mono font-medium ${
                   creditAnimation?.type === 'deduct' 
@@ -135,9 +161,9 @@ export function Header({
                     ? 'text-green-400'
                     : 'text-[var(--text-primary)]'
                 }`}>
-                  {user.credits?.toFixed(2)}
+                  {displayCredits.amount?.toFixed(2)}
                 </span>
-                <span className="text-xs text-[var(--text-muted)]">personal</span>
+                <span className="text-xs text-[var(--text-muted)]">{displayCredits.label}</span>
               </motion.div>
               
               <AnimatePresence>
@@ -156,8 +182,8 @@ export function Header({
                 )}
               </AnimatePresence>
             </div>
-          </div>
-        )}
+          );
+        })()}
         
         <button 
           onClick={toggleTheme}

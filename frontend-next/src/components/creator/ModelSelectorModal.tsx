@@ -65,6 +65,14 @@ const PROVIDER_GRADIENTS: Record<string, { gradient: string; border: string; acc
   'default': { gradient: 'from-gray-600/20 to-gray-800/20', border: 'border-gray-500/30', accent: 'text-gray-400' },
 };
 
+interface PricingSettings {
+  profitMargin: number;
+  profitMarginImage: number;
+  profitMarginVideo: number;
+  profitMarginChat: number;
+  creditPrice: number;
+}
+
 interface ModelSelectorModalProps {
   models: Model[];
   selectedModel: Model | null;
@@ -94,6 +102,50 @@ export function ModelSelectorModal({
   const [activeProvider, setActiveProvider] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [priceFilter, setPriceFilter] = useState('all');
+  const [pricingSettings, setPricingSettings] = useState<PricingSettings>({
+    profitMargin: 0,
+    profitMarginImage: 0,
+    profitMarginVideo: 0,
+    profitMarginChat: 0,
+    creditPrice: 1,
+  });
+
+  // Fetch pricing settings on mount
+  useEffect(() => {
+    const fetchPricingSettings = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/pricing-settings`);
+        const data = await response.json();
+        setPricingSettings({
+          profitMargin: parseFloat(data.profitMargin) || 0,
+          profitMarginImage: parseFloat(data.profitMarginImage) || 0,
+          profitMarginVideo: parseFloat(data.profitMarginVideo) || 0,
+          profitMarginChat: parseFloat(data.profitMarginChat) || 0,
+          creditPrice: parseFloat(data.creditPrice) || 1,
+        });
+      } catch (err) {
+        console.log('Using default pricing settings');
+      }
+    };
+    fetchPricingSettings();
+  }, []);
+
+  // Calculate user-facing credits with profit margin and credit conversion
+  const calculateUserCredits = (model: Model): number => {
+    const baseCost = model.baseCost || model.credits || 0;
+    
+    let margin = pricingSettings.profitMargin;
+    if (model.type === 'image' && pricingSettings.profitMarginImage > 0) {
+      margin = pricingSettings.profitMarginImage;
+    } else if (model.type === 'video' && pricingSettings.profitMarginVideo > 0) {
+      margin = pricingSettings.profitMarginVideo;
+    } else if (model.type === 'chat' && pricingSettings.profitMarginChat > 0) {
+      margin = pricingSettings.profitMarginChat;
+    }
+    
+    const finalUSD = baseCost * (1 + margin / 100);
+    return finalUSD / pricingSettings.creditPrice;
+  };
 
   const inputFilters = INPUT_FILTERS[generationType] || INPUT_FILTERS.image;
   const providers = useMemo(() => 
@@ -339,7 +391,7 @@ export function ModelSelectorModal({
                           {model.providerName || model.provider}
                         </span>
                         <span className="text-xs font-mono text-green-400 bg-green-500/10 px-2 py-0.5 rounded">
-                          {(model.credits || 0).toFixed(1)} cr
+                          {calculateUserCredits(model).toFixed(1)} cr
                         </span>
                       </div>
                     </div>
