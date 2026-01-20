@@ -4,6 +4,8 @@ A modern, production-ready AI generation platform that provides a unified interf
 
 ![OmniHub](https://img.shields.io/badge/OmniHub-AI%20Gateway-purple?style=for-the-badge)
 ![React](https://img.shields.io/badge/React-18-blue?style=flat-square)
+![Next.js](https://img.shields.io/badge/Next.js-14-black?style=flat-square)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue?style=flat-square)
 ![Express](https://img.shields.io/badge/Express-4.x-green?style=flat-square)
 ![SQLite](https://img.shields.io/badge/SQLite-3-lightblue?style=flat-square)
 
@@ -32,10 +34,12 @@ A modern, production-ready AI generation platform that provides a unified interf
 ### User Features
 - **OmniHub**: Unified workspace for all AI generation types
 - **Multi-Model Comparison**: Generate with up to 4 models simultaneously
-- **Workspaces**: Organize generations into team workspaces
+- **Workspaces**: Team workspaces with shared/individual credit modes
+- **Workspace Credits**: Separate credit pools for each workspace
+- **Generation Isolation**: Each workspace has its own generations
 - **Projects**: Save and organize generations into projects
 - **Community Gallery**: Share and discover AI-generated content
-- **Chat Interface**: Full-featured chat with streaming responses
+- **Chat Interface**: Full-featured chat with streaming responses and markdown rendering
 
 ### Admin Dashboard
 - **Analytics**: Revenue tracking, generation statistics, user metrics
@@ -46,8 +50,12 @@ A modern, production-ready AI generation platform that provides a unified interf
 - **Audit Logs**: Track all admin actions
 
 ### Credits System
-- Direct pass-through pricing (1 Credit = 1 USD)
+- Direct pass-through pricing (configurable, default 1 Credit = $0.001)
 - Per-model credit costs matching provider pricing
+- **Personal Credits**: User's own credit balance
+- **Workspace Credits**: Shared pool for team workspaces
+- **Allocated Credits**: Per-member allocations in individual mode
+- Credit source tracking on each generation
 - Free credits for new users
 - Subscription plans with monthly credit allowances
 
@@ -56,31 +64,36 @@ A modern, production-ready AI generation platform that provides a unified interf
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Frontend (React)                          │
-│  ┌─────────────┬─────────────┬─────────────┬─────────────────┐  │
-│  │   Landing   │  Dashboard  │   OmniHub   │   Admin Panel   │  │
-│  │    Page     │             │  Generator  │                 │  │
-│  └─────────────┴─────────────┴─────────────┴─────────────────┘  │
-│                              │                                   │
-│                    REST API (axios)                              │
-└──────────────────────────────┼───────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           Frontends                                      │
+│  ┌────────────────────────────┐  ┌────────────────────────────────────┐ │
+│  │   Vite + React (JS)        │  │   Next.js 14 + TypeScript          │ │
+│  │   localhost:5173           │  │   localhost:3000                   │ │
+│  │   ├── Dashboard            │  │   ├── Dashboard (App Router)      │ │
+│  │   ├── OmniHub Generator    │  │   ├── Generate Page               │ │
+│  │   ├── Chat Interface       │  │   ├── Chat with Markdown          │ │
+│  │   ├── Workspace Manager    │  │   ├── Workspace Manager           │ │
+│  │   └── Admin Panel          │  │   └── Admin Panel                 │ │
+│  └────────────────────────────┘  └────────────────────────────────────┘ │
+│                              │                                           │
+│                    REST API (fetch/axios)                                │
+└──────────────────────────────┼───────────────────────────────────────────┘
                                │
-┌──────────────────────────────┼───────────────────────────────────┐
-│                        Backend (Express)                         │
-│  ┌─────────────┬─────────────┬─────────────┬─────────────────┐  │
-│  │    Auth     │   Models    │ Generations │    Community    │  │
-│  │ Middleware  │    API      │     API     │       API       │  │
-│  └─────────────┴─────────────┴─────────────┴─────────────────┘  │
-│                              │                                   │
-│                      SQLite Database                             │
-└──────────────────────────────┼───────────────────────────────────┘
+┌──────────────────────────────┼───────────────────────────────────────────┐
+│                        Backend (Express.js)                              │
+│  ┌──────────┬───────────┬─────────────┬────────────┬─────────────────┐  │
+│  │   Auth   │  Models   │ Generations │ Workspaces │   Community     │  │
+│  │   JWT    │   CRUD    │   + Queue   │  + Credits │   + Sharing     │  │
+│  └──────────┴───────────┴─────────────┴────────────┴─────────────────┘  │
+│                              │                                           │
+│                      SQLite Database (better-sqlite3)                    │
+└──────────────────────────────┼───────────────────────────────────────────┘
                                │
           ┌────────────────────┼────────────────────┐
           │                    │                    │
 ┌─────────▼─────────┐  ┌───────▼───────┐  ┌────────▼────────┐
-│      Fal.ai       │  │  OpenRouter   │  │   (Future)      │
-│  Images & Video   │  │     Chat      │  │  Other APIs     │
+│      Fal.ai       │  │  OpenRouter   │  │   Replicate     │
+│  Images & Video   │  │   Chat/LLM    │  │   (Future)      │
 └───────────────────┘  └───────────────┘  └─────────────────┘
 ```
 
@@ -99,28 +112,43 @@ A modern, production-ready AI generation platform that provides a unified interf
 
 ## Tech Stack
 
-### Frontend
+### Frontend (Dual Implementation)
+
+**Vite + React (frontend/)**
 | Technology | Purpose |
 |------------|---------|
 | React 18 | UI framework with hooks |
-| Vite | Build tool and dev server |
-| Tailwind CSS v4 | Utility-first styling |
-| Framer Motion | Animations and transitions |
+| Vite 7 | Build tool and dev server |
+| Tailwind CSS 3 | Utility-first styling |
+| Framer Motion 11 | Animations and transitions |
 | React Router v6 | Client-side routing |
 | Axios | HTTP client |
 | Lucide React | Icon library |
 | Recharts | Admin analytics charts |
 
+**Next.js + TypeScript (frontend-next/)**
+| Technology | Purpose |
+|------------|---------|
+| Next.js 14 | React framework with App Router |
+| TypeScript 5 | Type-safe development |
+| Tailwind CSS 3 | Utility-first styling |
+| Framer Motion 11 | Animations and transitions |
+| React Markdown | Markdown rendering in chat |
+| React Syntax Highlighter | Code block syntax highlighting |
+| Lucide React | Icon library |
+
 ### Backend
 | Technology | Purpose |
 |------------|---------|
-| Express.js | Web server framework |
+| Node.js 18+ | JavaScript runtime |
+| Express.js 4 | Web server framework |
 | better-sqlite3 | SQLite database driver |
 | jsonwebtoken | JWT authentication |
 | bcryptjs | Password hashing |
 | uuid | Unique ID generation |
 | cors | Cross-origin requests |
 | dotenv | Environment variables |
+| @fal-ai/client | Fal.ai SDK for image/video |
 
 ### External APIs
 | Provider | Purpose | Models |
@@ -139,7 +167,8 @@ A modern, production-ready AI generation platform that provides a unified interf
 ### Installation
 
 ```bash
-# Clone or navigate to the project
+# Clone the repository
+git clone https://github.com/srikar115/omnihub.git
 cd omnihub
 
 # Install backend dependencies
@@ -153,18 +182,25 @@ echo "OPENROUTER_API_KEY=your-openrouter-key" >> .env
 # Start backend server
 npm start
 
-# In a new terminal, install and start frontend
+# In a new terminal, start Vite frontend
 cd ../frontend
+npm install
+npm run dev
+
+# OR start Next.js frontend (alternative)
+cd ../frontend-next
 npm install
 npm run dev
 ```
 
 ### Access Points
-- **Frontend**: http://localhost:5173
-- **Admin Panel**: http://localhost:5173/admin
+- **Vite Frontend**: http://localhost:5173
+- **Next.js Frontend**: http://localhost:3000
+- **Admin Panel**: http://localhost:5173/admin (or :3000/admin)
 - **Backend API**: http://localhost:3001/api
 
 ### Default Credentials
+- **Admin**: username: `admin`, password: `admin123`
 
 
 ---
@@ -173,48 +209,49 @@ npm run dev
 
 ```
 omnihub/
-├── frontend/                    # React + Vite frontend
+├── frontend/                    # React + Vite frontend (JavaScript)
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── chat/           # Chat interface components
-│   │   │   │   ├── ChatView.jsx
-│   │   │   │   ├── ChatInput.jsx
-│   │   │   │   ├── MessageList.jsx
-│   │   │   │   └── ConversationSidebar.jsx
-│   │   │   ├── creator/        # Generation UI components
-│   │   │   │   ├── CreatorBar.jsx
-│   │   │   │   └── MultiModelSettingsModal.jsx
+│   │   │   ├── creator/        # Generation UI (CreatorBar, Upscale)
 │   │   │   ├── landing/        # Landing page sections
-│   │   │   │   ├── HeroSection.jsx
-│   │   │   │   ├── PricingSection.jsx
-│   │   │   │   ├── CommunitySection.jsx
-│   │   │   │   └── ModelsSection.jsx
-│   │   │   ├── layout/         # Layout components
-│   │   │   │   ├── AppLayout.jsx
-│   │   │   │   ├── Sidebar.jsx
-│   │   │   │   └── Header.jsx
-│   │   │   ├── shared/         # Shared modals and components
+│   │   │   ├── layout/         # AppLayout, Sidebar, Header
+│   │   │   ├── shared/         # Modals and shared components
 │   │   │   └── workspace/      # Workspace management
-│   │   ├── context/
-│   │   │   └── ThemeContext.jsx  # Light/dark theme
-│   │   ├── pages/
-│   │   │   ├── LandingPage.jsx
-│   │   │   ├── Dashboard.jsx
-│   │   │   ├── OmniHub.jsx      # Main generation interface
-│   │   │   ├── AdminPanel.jsx   # Admin dashboard
-│   │   │   ├── Profile.jsx
-│   │   │   └── Community.jsx
-│   │   ├── App.jsx              # Routes and providers
-│   │   └── index.css            # Global styles + Tailwind
-│   ├── tailwind.config.js
+│   │   ├── context/            # ThemeContext
+│   │   ├── pages/              # Route pages
+│   │   └── index.css           # Global styles + Tailwind
+│   └── package.json
+│
+├── frontend-next/               # Next.js 14 frontend (TypeScript)
+│   ├── src/
+│   │   ├── app/                # App Router pages
+│   │   │   ├── dashboard/      # Dashboard, Generate, Chat, Profile
+│   │   │   ├── admin/          # Admin panel
+│   │   │   ├── community/      # Community gallery
+│   │   │   └── share/          # Shared generation pages
+│   │   ├── components/
+│   │   │   ├── chat/           # Chat with markdown rendering
+│   │   │   ├── creator/        # CreatorBar, ModelSelector
+│   │   │   ├── landing/        # Landing page sections
+│   │   │   ├── layout/         # Header, Sidebar
+│   │   │   ├── shared/         # GenerationModal, AuthModal
+│   │   │   ├── workspace/      # Workspace switcher & settings
+│   │   │   └── providers/      # ThemeProvider
+│   │   └── lib/                # Utilities
 │   └── package.json
 │
 ├── backend/
-│   ├── index.js                 # Express server (all routes)
-│   ├── omnihub.db              # SQLite database (auto-created)
-│   ├── .env                    # API keys (create this)
+│   ├── index.js                # Express server (5000+ lines)
+│   ├── providers/              # AI provider integrations
+│   ├── services/               # Workflow engine, provider router
+│   ├── models/                 # Model registry
+│   ├── migrations/             # Database migrations
+│   ├── omnihub.db             # SQLite database (auto-created)
+│   ├── .env                   # API keys (create this)
 │   └── package.json
 │
+├── ARCHITECTURE.md             # Detailed system architecture
 └── README.md
 ```
 
