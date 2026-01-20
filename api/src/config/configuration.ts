@@ -13,6 +13,7 @@ export const configuration = () => ({
   database: {
     url: process.env.DATABASE_URL,
     ssl: process.env.DATABASE_SSL !== 'false', // Default: SSL enabled
+    caCert: process.env.DATABASE_CA_CERT, // Path to CA certificate file
   },
 
   // Frontend

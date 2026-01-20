@@ -6,11 +6,18 @@
 import { Pool } from 'pg';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
+import * as fs from 'fs';
 
 // Load .env from api folder
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
-const DATABASE_URL = process.env.DATABASE_URL;
+let DATABASE_URL = process.env.DATABASE_URL || '';
+const DATABASE_CA_CERT = process.env.DATABASE_CA_CERT;
+
+// Remove sslmode from URL if present (we handle SSL separately)
+if (DATABASE_URL.includes('sslmode=')) {
+  DATABASE_URL = DATABASE_URL.replace(/[?&]sslmode=[^&]*/g, '').replace(/\?&/, '?').replace(/\?$/, '');
+}
 
 console.log('\n🔍 PostgreSQL Connection Test');
 console.log('='.repeat(50));
@@ -38,16 +45,33 @@ try {
   console.log(`   User:     ${user}`);
   console.log(`   Password: ${'*'.repeat(url.password?.length || 0)}`);
   console.log(`   SSL:      ${process.env.DATABASE_SSL !== 'false' ? 'enabled' : 'disabled'}`);
+  console.log(`   CA Cert:  ${DATABASE_CA_CERT || 'not set'}`);
 } catch {
   console.error('\n❌ Invalid DATABASE_URL format');
   process.exit(1);
+}
+
+// Build SSL config
+const sslEnabled = process.env.DATABASE_SSL !== 'false';
+let sslConfig: boolean | { rejectUnauthorized: boolean; ca?: string } = false;
+
+if (sslEnabled) {
+  if (DATABASE_CA_CERT && fs.existsSync(DATABASE_CA_CERT)) {
+    console.log(`\n🔐 Using CA certificate: ${DATABASE_CA_CERT}`);
+    sslConfig = {
+      rejectUnauthorized: true,
+      ca: fs.readFileSync(DATABASE_CA_CERT, 'utf-8'),
+    };
+  } else {
+    sslConfig = { rejectUnauthorized: false };
+  }
 }
 
 // Create connection pool
 const pool = new Pool({
   connectionString: DATABASE_URL,
   connectionTimeoutMillis: 10000,
-  ssl: process.env.DATABASE_SSL !== 'false' ? { rejectUnauthorized: false } : false,
+  ssl: sslConfig,
 });
 
 async function testConnection() {

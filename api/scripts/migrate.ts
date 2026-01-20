@@ -19,8 +19,14 @@ import { MigrationService } from '../src/database/migrations/migration.service';
 // Load environment
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
-const DATABASE_URL = process.env.DATABASE_URL;
+let DATABASE_URL = process.env.DATABASE_URL || '';
 const DATABASE_SSL = process.env.DATABASE_SSL !== 'false';
+const DATABASE_CA_CERT = process.env.DATABASE_CA_CERT;
+
+// Remove sslmode from URL if present (we handle SSL separately)
+if (DATABASE_URL.includes('sslmode=')) {
+  DATABASE_URL = DATABASE_URL.replace(/[?&]sslmode=[^&]*/g, '').replace(/\?&/, '?').replace(/\?$/, '');
+}
 
 // Colors for terminal output
 const colors = {
@@ -55,7 +61,11 @@ async function main() {
     process.exit(1);
   }
 
-  const service = new MigrationService(DATABASE_URL, DATABASE_SSL);
+  const service = new MigrationService({
+    connectionString: DATABASE_URL,
+    ssl: DATABASE_SSL,
+    caCertPath: DATABASE_CA_CERT,
+  });
 
   try {
     switch (command) {

@@ -3,6 +3,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { MigrationRecord, MigrationStatus, MigrationResult } from './migration.interface';
 
+export interface MigrationServiceOptions {
+  connectionString: string;
+  ssl?: boolean;
+  caCertPath?: string;
+}
+
 /**
  * Migration Service
  * Handles database migrations with up/down support
@@ -12,11 +18,29 @@ export class MigrationService {
   private migrationsDir: string;
   private tableName = '_migrations';
 
-  constructor(connectionString: string, ssl: boolean = true) {
+  constructor(options: MigrationServiceOptions) {
+    const { connectionString, ssl = true, caCertPath } = options;
+
+    // Build SSL config
+    let sslConfig: boolean | { rejectUnauthorized: boolean; ca?: string } = false;
+    if (ssl) {
+      if (caCertPath && fs.existsSync(caCertPath)) {
+        // Use provided CA certificate
+        console.log(`[Migration] Using CA certificate: ${caCertPath}`);
+        sslConfig = {
+          rejectUnauthorized: true,
+          ca: fs.readFileSync(caCertPath, 'utf-8'),
+        };
+      } else {
+        // No cert provided - allow self-signed
+        sslConfig = { rejectUnauthorized: false };
+      }
+    }
+
     this.pool = new Pool({
       connectionString,
       connectionTimeoutMillis: 10000,
-      ssl: ssl ? { rejectUnauthorized: false } : false,
+      ssl: sslConfig,
     });
 
     this.migrationsDir = path.join(__dirname, '..', '..', '..', 'migrations');

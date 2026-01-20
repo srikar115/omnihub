@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Pool, PoolClient } from 'pg';
+import * as fs from 'fs';
 
 export interface DatabaseHealthStatus {
   connected: boolean;
@@ -23,10 +24,34 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   private isConnected = false;
 
   constructor(private configService: ConfigService) {
-    const dbUrl = this.configService.get<string>('database.url');
+    let dbUrl = this.configService.get<string>('database.url');
 
     if (!dbUrl) {
       throw new Error('DATABASE_URL is required. Please set it in your .env file.');
+    }
+
+    // Remove sslmode from URL - we handle SSL config separately
+    if (dbUrl.includes('sslmode=')) {
+      dbUrl = dbUrl.replace(/[?&]sslmode=[^&]*/g, '').replace(/\?&/, '?').replace(/\?$/, '');
+    }
+
+    const sslEnabled = this.configService.get('database.ssl') !== false;
+    const caCertPath = this.configService.get<string>('database.caCert');
+
+    // Build SSL config
+    let sslConfig: boolean | { rejectUnauthorized: boolean; ca?: string } = false;
+    if (sslEnabled) {
+      if (caCertPath && fs.existsSync(caCertPath)) {
+        // Use provided CA certificate
+        this.logger.log(`Using CA certificate: ${caCertPath}`);
+        sslConfig = {
+          rejectUnauthorized: true,
+          ca: fs.readFileSync(caCertPath, 'utf-8'),
+        };
+      } else {
+        // No cert provided - allow self-signed
+        sslConfig = { rejectUnauthorized: false };
+      }
     }
 
     this.pool = new Pool({
@@ -34,9 +59,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       max: 20,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000,
-      ssl: this.configService.get('database.ssl') !== false
-        ? { rejectUnauthorized: false }
-        : false,
+      ssl: sslConfig,
     });
 
     this.pool.on('error', (err) => {
