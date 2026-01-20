@@ -197,7 +197,8 @@ function DashboardContent({ user, updateUserCredits, showAuthModal, loading, nav
 
   const fetchPricingSettings = async () => {
     try {
-      const response = await axios.get(`${API_BASE}/admin/settings`);
+      // Use public pricing settings endpoint (no admin auth required)
+      const response = await axios.get(`${API_BASE}/pricing-settings`);
       setPricingSettings({
         profitMargin: parseFloat(response.data.profitMargin) || 0,
         profitMarginImage: parseFloat(response.data.profitMarginImage) || 0,
@@ -297,10 +298,8 @@ function DashboardContent({ user, updateUserCredits, showAuthModal, loading, nav
   const fetchRecentGenerations = async () => {
     setLoadingGenerations(true);
     try {
-      // Pass workspaceId to filter by active workspace
-      const workspaceParam = activeWorkspace && !activeWorkspace.isDefault 
-        ? `&workspaceId=${activeWorkspace.id}` 
-        : '';
+      // Always pass workspaceId to filter by active workspace
+      const workspaceParam = activeWorkspace?.id ? `&workspaceId=${activeWorkspace.id}` : '';
       const response = await axios.get(`${API_BASE}/generations?limit=8${workspaceParam}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('userToken')}` }
       });
@@ -318,10 +317,8 @@ function DashboardContent({ user, updateUserCredits, showAuthModal, loading, nav
 
   const fetchStats = async () => {
     try {
-      // Fetch generations to compute stats from them - filter by workspace
-      const workspaceParam = activeWorkspace && !activeWorkspace.isDefault 
-        ? `&workspaceId=${activeWorkspace.id}` 
-        : '';
+      // Fetch generations to compute stats from them - always pass workspace
+      const workspaceParam = activeWorkspace?.id ? `&workspaceId=${activeWorkspace.id}` : '';
       const response = await axios.get(`${API_BASE}/generations?limit=1000${workspaceParam}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('userToken')}` }
       });

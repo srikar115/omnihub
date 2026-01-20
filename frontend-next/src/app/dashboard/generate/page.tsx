@@ -207,7 +207,8 @@ export default function GeneratePage() {
 
   const fetchPricingSettings = async () => {
     try {
-      const response = await fetch(`${API_BASE}/admin/settings`);
+      // Use public pricing settings endpoint (no admin auth required)
+      const response = await fetch(`${API_BASE}/pricing-settings`);
       const data = await response.json();
       setPricingSettings({
         profitMargin: parseFloat(data.profitMargin) || 0,
@@ -290,10 +291,8 @@ export default function GeneratePage() {
     if (!token) return;
 
     try {
-      // Pass workspaceId to filter generations by active workspace
-      const workspaceParam = activeWorkspace && !activeWorkspace.isDefault 
-        ? `&workspaceId=${activeWorkspace.id}` 
-        : '';
+      // Always pass workspaceId to filter generations by active workspace
+      const workspaceParam = activeWorkspace?.id ? `&workspaceId=${activeWorkspace.id}` : '';
       const response = await fetch(`${API_BASE}/generations?limit=100${workspaceParam}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -371,7 +370,7 @@ export default function GeneratePage() {
             prompt: prompt.trim(),
             options: options,
             inputImages: inputImages,
-            workspaceId: activeWorkspace?.isDefault ? null : activeWorkspace?.id,
+            workspaceId: activeWorkspace?.id || null, // Always pass workspace ID
           }),
         });
 

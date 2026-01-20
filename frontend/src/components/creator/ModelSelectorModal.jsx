@@ -75,7 +75,8 @@ export function ModelSelectorModal({
   useEffect(() => {
     const fetchPricingSettings = async () => {
       try {
-        const response = await axios.get(`${API_BASE}/admin/settings`);
+        // Use public pricing settings endpoint (no admin auth required)
+        const response = await axios.get(`${API_BASE}/pricing-settings`);
         setPricingSettings({
           profitMargin: parseFloat(response.data.profitMargin) || 0,
           profitMarginImage: parseFloat(response.data.profitMarginImage) || 0,

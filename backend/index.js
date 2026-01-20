@@ -3829,6 +3829,18 @@ app.get('/api/models', (req, res) => {
   res.json(models);
 });
 
+// Public pricing settings endpoint (no auth required, excludes sensitive data)
+app.get('/api/pricing-settings', (req, res) => {
+  res.json({
+    profitMargin: parseFloat(getSetting('profitMargin')) || 0,
+    profitMarginImage: parseFloat(getSetting('profitMarginImage')) || 0,
+    profitMarginVideo: parseFloat(getSetting('profitMarginVideo')) || 0,
+    profitMarginChat: parseFloat(getSetting('profitMarginChat')) || 0,
+    creditPrice: parseFloat(getSetting('creditPrice')) || 1,
+    freeCredits: parseFloat(getSetting('freeCredits')) || 10,
+  });
+});
+
 app.post('/api/models/:id/price', (req, res) => {
   const model = getModel(req.params.id);
   if (!model) return res.status(404).json({ error: 'Model not found' });
@@ -3947,11 +3959,22 @@ app.get('/api/generations', userAuthMiddleware, (req, res) => {
   let query = 'SELECT * FROM generations WHERE userId = ?';
   const params = [req.user.id];
   
-  // Filter by workspace - if workspaceId provided, filter by it; otherwise show personal (null workspaceId)
+  // Filter by workspace
   if (workspaceId) {
-    query += ' AND workspaceId = ?';
-    params.push(workspaceId);
+    // Check if this is the user's default workspace
+    const workspace = db.prepare('SELECT isDefault FROM workspaces WHERE id = ? AND ownerId = ?').get(workspaceId, req.user.id);
+    
+    if (workspace && workspace.isDefault) {
+      // For default workspace, include both: workspaceId matches OR workspaceId is NULL (legacy generations)
+      query += ' AND (workspaceId = ? OR workspaceId IS NULL OR workspaceId = "")';
+      params.push(workspaceId);
+    } else {
+      // For non-default workspaces, only show generations with matching workspaceId
+      query += ' AND workspaceId = ?';
+      params.push(workspaceId);
+    }
   } else {
+    // No workspaceId provided - show only generations without workspace (legacy)
     query += ' AND (workspaceId IS NULL OR workspaceId = "")';
   }
   
@@ -3966,8 +3989,14 @@ app.get('/api/generations', userAuthMiddleware, (req, res) => {
   let countQuery = 'SELECT type, COUNT(*) as count FROM generations WHERE userId = ?';
   const countParams = [req.user.id];
   if (workspaceId) {
-    countQuery += ' AND workspaceId = ?';
-    countParams.push(workspaceId);
+    const workspace = db.prepare('SELECT isDefault FROM workspaces WHERE id = ? AND ownerId = ?').get(workspaceId, req.user.id);
+    if (workspace && workspace.isDefault) {
+      countQuery += ' AND (workspaceId = ? OR workspaceId IS NULL OR workspaceId = "")';
+      countParams.push(workspaceId);
+    } else {
+      countQuery += ' AND workspaceId = ?';
+      countParams.push(workspaceId);
+    }
   } else {
     countQuery += ' AND (workspaceId IS NULL OR workspaceId = "")';
   }

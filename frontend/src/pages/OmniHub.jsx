@@ -191,7 +191,8 @@ export function OmniHubContent({
 
   const fetchPricingSettings = async () => {
     try {
-      const response = await axios.get(`${API_BASE}/admin/settings`);
+      // Use public pricing settings endpoint (no admin auth required)
+      const response = await axios.get(`${API_BASE}/pricing-settings`);
       setPricingSettings({
         profitMargin: parseFloat(response.data.profitMargin) || 0,
         profitMarginImage: parseFloat(response.data.profitMarginImage) || 0,
@@ -351,10 +352,8 @@ export function OmniHubContent({
 
   const fetchGenerations = async () => {
     try {
-      // Pass workspaceId to filter generations by active workspace
-      const workspaceParam = activeWorkspace && !activeWorkspace.isDefault 
-        ? `?workspaceId=${activeWorkspace.id}` 
-        : '';
+      // Always pass workspaceId to filter generations by active workspace
+      const workspaceParam = activeWorkspace?.id ? `?workspaceId=${activeWorkspace.id}` : '';
       const response = await axios.get(`${API_BASE}/generations${workspaceParam}`, getAuthHeaders());
       setGenerations(response.data.generations || []);
       setGenerationCounts(response.data.counts || { image: 0, video: 0, chat: 0 });
@@ -504,7 +503,7 @@ export function OmniHubContent({
           prompt: prompt.trim(),
           options: options,
           inputImages: inputImages,
-          workspaceId: activeWorkspace?.isDefault ? null : activeWorkspace?.id,
+          workspaceId: activeWorkspace?.id || null, // Always pass workspace ID
         }, getAuthHeaders());
 
         // Handle multiple generations (for multi-image requests)

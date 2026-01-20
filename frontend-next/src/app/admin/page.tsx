@@ -642,15 +642,176 @@ function RateLimitsTab() {
 }
 
 // Models Tab
+interface ProfitSettings {
+  profitMargin: number;
+  profitMarginImage: number;
+  profitMarginVideo: number;
+  profitMarginChat: number;
+  creditPrice: number;
+  freeCredits: number;
+}
+
 function ModelsTab({ models, onUpdate }: { models: Model[]; onUpdate: (id: string, updates: Partial<Model>) => void }) {
   const [activeType, setActiveType] = useState('image');
+  const [expandedModel, setExpandedModel] = useState<string | null>(null);
+  const [showCalculator, setShowCalculator] = useState(false);
+  const [calculatorModel, setCalculatorModel] = useState<Model | null>(null);
+  const [profitSettings, setProfitSettings] = useState<ProfitSettings>({
+    profitMargin: 0,
+    profitMarginImage: 0,
+    profitMarginVideo: 0,
+    profitMarginChat: 0,
+    creditPrice: 1,
+    freeCredits: 10,
+  });
+  const [savingSettings, setSavingSettings] = useState(false);
+
   const filteredModels = models.filter(m => m.type === activeType);
+
+  // Fetch profit settings on mount
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/admin/settings`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` }
+        });
+        const data = await response.json();
+        setProfitSettings({
+          profitMargin: parseFloat(data.profitMargin) || 0,
+          profitMarginImage: parseFloat(data.profitMarginImage) || 0,
+          profitMarginVideo: parseFloat(data.profitMarginVideo) || 0,
+          profitMarginChat: parseFloat(data.profitMarginChat) || 0,
+          creditPrice: parseFloat(data.creditPrice) || 1,
+          freeCredits: parseFloat(data.freeCredits) || 10,
+        });
+      } catch (err) {
+        console.error('Failed to fetch profit settings');
+      }
+    };
+    fetchSettings();
+  }, []);
+
+  // Calculate user-facing credits with profit margin and credit conversion
+  const calculateUserCredits = (model: Model) => {
+    const baseCost = model.baseCost || model.credits || 0;
+    
+    let margin = profitSettings.profitMargin || 0;
+    if (model.type === 'image' && profitSettings.profitMarginImage > 0) {
+      margin = profitSettings.profitMarginImage;
+    } else if (model.type === 'video' && profitSettings.profitMarginVideo > 0) {
+      margin = profitSettings.profitMarginVideo;
+    } else if (model.type === 'chat' && profitSettings.profitMarginChat > 0) {
+      margin = profitSettings.profitMarginChat;
+    }
+    
+    const finalUSD = baseCost * (1 + margin / 100);
+    const creditPrice = profitSettings.creditPrice || 1;
+    const userCredits = finalUSD / creditPrice;
+    
+    return { baseCost, margin, finalUSD, userCredits, creditPrice };
+  };
+
+  const saveSettings = async () => {
+    setSavingSettings(true);
+    try {
+      await fetch(`${API_BASE}/admin/settings`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('adminToken')}`
+        },
+        body: JSON.stringify(profitSettings)
+      });
+    } catch (err) {
+      console.error('Failed to save settings');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2 text-[var(--text-primary)]">Model Pricing</h1>
-        <p className="text-[var(--text-muted)]">Configure model costs and availability</p>
+      <div className="mb-8 flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-bold mb-2 text-[var(--text-primary)]">Model Pricing</h1>
+          <p className="text-[var(--text-muted)]">Configure model costs and availability</p>
+        </div>
+        <button
+          onClick={() => { setCalculatorModel(null); setShowCalculator(true); }}
+          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg font-medium hover:opacity-90 transition-opacity text-white"
+        >
+          <Calculator className="w-4 h-4" />
+          Profit Calculator
+        </button>
+      </div>
+
+      {/* Profit Margin Settings */}
+      <div className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-xl p-4 mb-6">
+        <h3 className="text-sm font-medium text-[var(--text-primary)] mb-4 flex items-center gap-2">
+          <DollarSign className="w-4 h-4 text-green-400" />
+          Profit Margins & Credit Conversion
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">Universal %</label>
+            <input
+              type="number"
+              value={profitSettings.profitMargin}
+              onChange={(e) => setProfitSettings({...profitSettings, profitMargin: parseFloat(e.target.value) || 0})}
+              className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">Image %</label>
+            <input
+              type="number"
+              value={profitSettings.profitMarginImage}
+              onChange={(e) => setProfitSettings({...profitSettings, profitMarginImage: parseFloat(e.target.value) || 0})}
+              className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">Video %</label>
+            <input
+              type="number"
+              value={profitSettings.profitMarginVideo}
+              onChange={(e) => setProfitSettings({...profitSettings, profitMarginVideo: parseFloat(e.target.value) || 0})}
+              className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">Chat %</label>
+            <input
+              type="number"
+              value={profitSettings.profitMarginChat}
+              onChange={(e) => setProfitSettings({...profitSettings, profitMarginChat: parseFloat(e.target.value) || 0})}
+              className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">$ per Credit</label>
+            <input
+              type="number"
+              step="0.0001"
+              value={profitSettings.creditPrice}
+              onChange={(e) => setProfitSettings({...profitSettings, creditPrice: parseFloat(e.target.value) || 1})}
+              className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]"
+            />
+          </div>
+        </div>
+        <div className="mt-4 flex items-center justify-between">
+          <p className="text-xs text-[var(--text-muted)]">
+            $1 USD = {(1 / profitSettings.creditPrice).toFixed(0)} credits
+          </p>
+          <button
+            onClick={saveSettings}
+            disabled={savingSettings}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-500/20 text-purple-400 rounded-lg text-sm hover:bg-purple-500/30 transition-colors"
+          >
+            {savingSettings ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Save Settings
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-2 mb-6">
@@ -664,47 +825,257 @@ function ModelsTab({ models, onUpdate }: { models: Model[]; onUpdate: (id: strin
                 : 'bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:text-white'
             }`}
           >
-            {type}
+            {type} ({models.filter(m => m.type === type).length})
           </button>
         ))}
       </div>
 
       <div className="grid gap-4">
-        {filteredModels.map(model => (
-          <div key={model.id} className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-xl p-4 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                model.type === 'image' ? 'bg-cyan-500/20' : 
-                model.type === 'video' ? 'bg-pink-500/20' : 'bg-emerald-500/20'
-              }`}>
-                {model.type === 'image' && <Image className="w-5 h-5 text-cyan-400" />}
-                {model.type === 'video' && <Video className="w-5 h-5 text-pink-400" />}
-                {model.type === 'chat' && <MessageSquare className="w-5 h-5 text-emerald-400" />}
+        {filteredModels.map(model => {
+          const calc = calculateUserCredits(model);
+          return (
+            <div 
+              key={model.id} 
+              className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-xl overflow-hidden"
+            >
+              <div 
+                className="p-4 flex items-center justify-between cursor-pointer hover:bg-[var(--bg-tertiary)]/50 transition-colors"
+                onClick={() => setExpandedModel(expandedModel === model.id ? null : model.id)}
+              >
+                <div className="flex items-center gap-4">
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                    model.type === 'image' ? 'bg-cyan-500/20' : 
+                    model.type === 'video' ? 'bg-pink-500/20' : 'bg-emerald-500/20'
+                  }`}>
+                    {model.type === 'image' && <Image className="w-5 h-5 text-cyan-400" />}
+                    {model.type === 'video' && <Video className="w-5 h-5 text-pink-400" />}
+                    {model.type === 'chat' && <MessageSquare className="w-5 h-5 text-emerald-400" />}
+                  </div>
+                  <div>
+                    <p className="font-medium text-[var(--text-primary)]">{model.name}</p>
+                    <p className="text-xs text-[var(--text-muted)]">{model.provider || model.id}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  {/* Base Cost */}
+                  <div className="text-right">
+                    <p className="text-xs text-[var(--text-muted)]">Base Cost</p>
+                    <p className="font-mono text-sm text-gray-400">${calc.baseCost.toFixed(4)}</p>
+                  </div>
+                  
+                  {/* User Credits */}
+                  <div className="text-right">
+                    <p className="text-xs text-[var(--text-muted)]">User Credits</p>
+                    <div className="flex items-center gap-2">
+                      <span 
+                        className="font-mono bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-sm"
+                        title={`Base: $${calc.baseCost.toFixed(4)} + ${calc.margin}% = $${calc.finalUSD.toFixed(4)}`}
+                      >
+                        {calc.userCredits.toFixed(2)}
+                      </span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setCalculatorModel(model); setShowCalculator(true); }}
+                        className="p-1 text-green-400 hover:bg-green-500/20 rounded transition-colors"
+                        title="Calculate profit"
+                      >
+                        <Calculator className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {/* Enable/Disable */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onUpdate(model.id, { enabled: model.enabled ? 0 : 1 }); }}
+                    className={`px-3 py-1.5 rounded-lg text-xs ${
+                      model.enabled !== false && model.enabled !== 0
+                        ? 'bg-green-500/20 text-green-400' 
+                        : 'bg-red-500/20 text-red-400'
+                    }`}
+                  >
+                    {model.enabled !== false && model.enabled !== 0 ? 'Enabled' : 'Disabled'}
+                  </button>
+                  
+                  {/* Expand */}
+                  <div className="text-[var(--text-muted)]">
+                    {expandedModel === model.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                  </div>
+                </div>
+              </div>
+
+              {/* Expanded Details */}
+              <AnimatePresence>
+                {expandedModel === model.id && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="p-4 border-t border-[var(--border-color)] bg-[var(--bg-primary)]/50">
+                      <div className="grid grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <p className="text-[var(--text-muted)] text-xs mb-1">API Cost</p>
+                          <p className="font-mono text-[var(--text-primary)]">${calc.baseCost.toFixed(4)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[var(--text-muted)] text-xs mb-1">Profit Margin</p>
+                          <p className="font-mono text-yellow-400">{calc.margin}%</p>
+                        </div>
+                        <div>
+                          <p className="text-[var(--text-muted)] text-xs mb-1">Final USD</p>
+                          <p className="font-mono text-[var(--text-primary)]">${calc.finalUSD.toFixed(4)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[var(--text-muted)] text-xs mb-1">Profit per Gen</p>
+                          <p className="font-mono text-green-400">${(calc.finalUSD - calc.baseCost).toFixed(4)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Profit Calculator Modal */}
+      <AnimatePresence>
+        {showCalculator && (
+          <ProfitCalculatorModal 
+            onClose={() => { setShowCalculator(false); setCalculatorModel(null); }}
+            model={calculatorModel}
+            profitSettings={profitSettings}
+          />
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
+// Profit Calculator Modal
+function ProfitCalculatorModal({ 
+  onClose, 
+  model, 
+  profitSettings 
+}: { 
+  onClose: () => void; 
+  model: Model | null; 
+  profitSettings: ProfitSettings;
+}) {
+  const [apiCost, setApiCost] = useState(model?.baseCost || 0.04);
+  const [profitMargin, setProfitMargin] = useState(() => {
+    if (model?.type === 'image' && profitSettings.profitMarginImage > 0) return profitSettings.profitMarginImage;
+    if (model?.type === 'video' && profitSettings.profitMarginVideo > 0) return profitSettings.profitMarginVideo;
+    if (model?.type === 'chat' && profitSettings.profitMarginChat > 0) return profitSettings.profitMarginChat;
+    return profitSettings.profitMargin || 25;
+  });
+  const [creditPrice, setCreditPrice] = useState(profitSettings.creditPrice || 1);
+
+  const finalPrice = apiCost * (1 + profitMargin / 100);
+  const creditsCharged = finalPrice / creditPrice;
+  const profitPerGeneration = finalPrice - apiCost;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
+        className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-2xl w-full max-w-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-6 border-b border-[var(--border-color)] bg-gradient-to-r from-green-500/10 to-emerald-500/10">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
+                <Calculator className="w-5 h-5 text-white" />
               </div>
               <div>
-                <p className="font-medium text-[var(--text-primary)]">{model.name}</p>
-                <p className="text-xs text-[var(--text-muted)]">{model.provider || model.id}</p>
+                <h2 className="text-lg font-semibold text-[var(--text-primary)]">Profit Calculator</h2>
+                {model && <p className="text-sm text-[var(--text-muted)]">{model.name}</p>}
               </div>
             </div>
-            <div className="flex items-center gap-4">
-              <div className="text-right">
-                <p className="text-sm text-[var(--text-muted)]">Base Cost</p>
-                <p className="font-mono text-cyan-400">${(model.baseCost || model.credits)?.toFixed(4)}</p>
-              </div>
-              <button
-                onClick={() => onUpdate(model.id, { enabled: model.enabled ? 0 : 1 })}
-                className={`px-4 py-2 rounded-lg text-sm ${
-                  model.enabled !== false && model.enabled !== 0
-                    ? 'bg-green-500/20 text-green-400' 
-                    : 'bg-red-500/20 text-red-400'
-                }`}
-              >
-                {model.enabled !== false && model.enabled !== 0 ? 'Enabled' : 'Disabled'}
-              </button>
+            <button onClick={onClose} className="p-2 hover:bg-[var(--bg-tertiary)] rounded-lg">
+              <X className="w-5 h-5 text-[var(--text-muted)]" />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {/* Input Fields */}
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm text-[var(--text-muted)] mb-2">API Cost ($)</label>
+              <input
+                type="number"
+                step="0.0001"
+                value={apiCost}
+                onChange={(e) => setApiCost(parseFloat(e.target.value) || 0)}
+                className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-lg px-3 py-2 text-[var(--text-primary)]"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-[var(--text-muted)] mb-2">Margin (%)</label>
+              <input
+                type="number"
+                value={profitMargin}
+                onChange={(e) => setProfitMargin(parseFloat(e.target.value) || 0)}
+                className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-lg px-3 py-2 text-[var(--text-primary)]"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-[var(--text-muted)] mb-2">$ per Credit</label>
+              <input
+                type="number"
+                step="0.0001"
+                value={creditPrice}
+                onChange={(e) => setCreditPrice(parseFloat(e.target.value) || 1)}
+                className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-lg px-3 py-2 text-[var(--text-primary)]"
+              />
             </div>
           </div>
-        ))}
-      </div>
+
+          {/* Results */}
+          <div className="bg-[var(--bg-primary)] rounded-xl p-4 space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-[var(--text-muted)]">Final Price (with margin)</span>
+              <span className="font-mono text-[var(--text-primary)]">${finalPrice.toFixed(4)}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-[var(--text-muted)]">Credits Charged</span>
+              <span className="font-mono text-cyan-400">{creditsCharged.toFixed(2)} credits</span>
+            </div>
+            <div className="flex justify-between items-center border-t border-[var(--border-color)] pt-3">
+              <span className="text-[var(--text-muted)]">Profit per Generation</span>
+              <span className="font-mono text-green-400">${profitPerGeneration.toFixed(4)}</span>
+            </div>
+          </div>
+
+          {/* Projections */}
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div className="bg-[var(--bg-primary)] rounded-lg p-3">
+              <p className="text-xs text-[var(--text-muted)] mb-1">100 gens</p>
+              <p className="font-mono text-green-400">${(profitPerGeneration * 100).toFixed(2)}</p>
+            </div>
+            <div className="bg-[var(--bg-primary)] rounded-lg p-3">
+              <p className="text-xs text-[var(--text-muted)] mb-1">1K gens</p>
+              <p className="font-mono text-green-400">${(profitPerGeneration * 1000).toFixed(2)}</p>
+            </div>
+            <div className="bg-[var(--bg-primary)] rounded-lg p-3">
+              <p className="text-xs text-[var(--text-muted)] mb-1">10K gens</p>
+              <p className="font-mono text-green-400">${(profitPerGeneration * 10000).toFixed(2)}</p>
+            </div>
+          </div>
+        </div>
+      </motion.div>
     </motion.div>
   );
 }

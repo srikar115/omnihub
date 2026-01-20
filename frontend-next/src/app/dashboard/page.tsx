@@ -214,7 +214,8 @@ export default function DashboardPage() {
 
   const fetchPricingSettings = async () => {
     try {
-      const response = await fetch(`${API_BASE}/admin/settings`);
+      // Use public pricing settings endpoint (no admin auth required)
+      const response = await fetch(`${API_BASE}/pricing-settings`);
       const data = await response.json();
       setPricingSettings({
         profitMargin: parseFloat(data.profitMargin) || 0,
@@ -288,10 +289,8 @@ export default function DashboardPage() {
   const fetchRecentGenerations = async () => {
     setLoadingGenerations(true);
     try {
-      // Pass workspaceId to filter by active workspace
-      const workspaceParam = activeWorkspace && !activeWorkspace.isDefault 
-        ? `&workspaceId=${activeWorkspace.id}` 
-        : '';
+      // Always pass workspaceId to filter by active workspace
+      const workspaceParam = activeWorkspace?.id ? `&workspaceId=${activeWorkspace.id}` : '';
       const response = await fetch(`${API_BASE}/generations?limit=8${workspaceParam}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('userToken')}` },
       });
@@ -308,10 +307,8 @@ export default function DashboardPage() {
 
   const fetchStats = async () => {
     try {
-      // Pass workspaceId to filter by active workspace
-      const workspaceParam = activeWorkspace && !activeWorkspace.isDefault 
-        ? `&workspaceId=${activeWorkspace.id}` 
-        : '';
+      // Always pass workspaceId to filter by active workspace
+      const workspaceParam = activeWorkspace?.id ? `&workspaceId=${activeWorkspace.id}` : '';
       const response = await fetch(`${API_BASE}/generations?limit=1000${workspaceParam}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('userToken')}` },
       });
