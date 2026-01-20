@@ -1,0 +1,16 @@
+# OmniHub Robots.txt
+# https://omnihub.ai
+
+User-agent: *
+Allow: /
+Allow: /community
+Allow: /omnihub
+Disallow: /dashboard/
+Disallow: /api/
+Disallow: /admin/
+
+# Sitemap location
+Sitemap: https://omnihub.ai/sitemap.xml
+
+# Crawl delay (optional)
+Crawl-delay: 1
