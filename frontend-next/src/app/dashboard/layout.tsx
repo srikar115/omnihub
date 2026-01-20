@@ -139,8 +139,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('userToken');
+  const handleLogout = async () => {
+    // Use the auth.logout to properly revoke the refresh token
+    const { auth: authHelper } = await import('@/lib/api');
+    await authHelper.logout();
     localStorage.removeItem('activeWorkspaceId');
     setUser(null);
     setWorkspaces([]);
@@ -148,8 +150,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     router.push('/');
   };
 
-  const handleAuthSuccess = (userData: User, token: string) => {
-    localStorage.setItem('userToken', token);
+  const handleAuthSuccess = (userData: User) => {
+    // Tokens are automatically stored by the auth helpers
     setUser(userData);
     setShowAuth(false);
     fetchWorkspaces();

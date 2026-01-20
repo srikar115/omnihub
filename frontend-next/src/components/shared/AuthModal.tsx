@@ -3,14 +3,13 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Mail, Lock, User, Loader2, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { auth } from '@/lib/api';
 
 interface AuthModalProps {
   onClose: () => void;
-  onSuccess: (user: any, token: string) => void;
+  onSuccess: (user: any) => void;
   initialMode?: 'login' | 'register';
 }
-
-const API_BASE = '/api';
 
 export function AuthModal({ onClose, onSuccess, initialMode = 'login' }: AuthModalProps) {
   const [mode, setMode] = useState(initialMode);
@@ -27,26 +26,15 @@ export function AuthModal({ onClose, onSuccess, initialMode = 'login' }: AuthMod
     setError('');
 
     try {
-      const endpoint = mode === 'login' ? '/auth/login' : '/auth/register';
-      const body = mode === 'login' 
-        ? { email, password }
-        : { email, password, name };
+      // Use the auth helpers which automatically store tokens
+      const response = mode === 'login' 
+        ? await auth.login(email, password)
+        : await auth.register(email, password, name);
 
-      const response = await fetch(`${API_BASE}${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Authentication failed');
-      }
-
-      onSuccess(data.user, data.token);
+      // Tokens are automatically stored by the auth helpers
+      onSuccess(response.user);
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Authentication failed');
     } finally {
       setLoading(false);
     }

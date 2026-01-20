@@ -73,8 +73,8 @@ export function LandingPage() {
     }
   };
 
-  const handleAuthSuccess = (user: any, token: string) => {
-    localStorage.setItem('userToken', token);
+  const handleAuthSuccess = (user: any) => {
+    // Tokens are automatically stored by the auth helpers
     setShowAuthModal(false);
     router.push('/dashboard');
   };
