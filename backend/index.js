@@ -3971,7 +3971,7 @@ app.get('/api/generations', userAuthMiddleware, (req, res) => {
     
     if (workspace && workspace.isDefault) {
       // For default workspace, include both: workspaceId matches OR workspaceId is NULL (legacy generations)
-      query += ' AND (workspaceId = ? OR workspaceId IS NULL OR workspaceId = "")';
+      query += " AND (workspaceId = ? OR workspaceId IS NULL OR workspaceId = '')";
       params.push(workspaceId);
     } else {
       // For non-default workspaces, only show generations with matching workspaceId
@@ -3980,7 +3980,7 @@ app.get('/api/generations', userAuthMiddleware, (req, res) => {
     }
   } else {
     // No workspaceId provided - show only generations without workspace (legacy)
-    query += ' AND (workspaceId IS NULL OR workspaceId = "")';
+    query += " AND (workspaceId IS NULL OR workspaceId = '')";
   }
   
   if (type) { query += ' AND type = ?'; params.push(type); }
@@ -4001,14 +4001,14 @@ app.get('/api/generations', userAuthMiddleware, (req, res) => {
       WHERE w.id = ? AND wm.userId = ?
     `).get(workspaceId, req.user.id);
     if (workspace && workspace.isDefault) {
-      countQuery += ' AND (workspaceId = ? OR workspaceId IS NULL OR workspaceId = "")';
+      countQuery += " AND (workspaceId = ? OR workspaceId IS NULL OR workspaceId = '')";
       countParams.push(workspaceId);
     } else {
       countQuery += ' AND workspaceId = ?';
       countParams.push(workspaceId);
     }
   } else {
-    countQuery += ' AND (workspaceId IS NULL OR workspaceId = "")';
+    countQuery += " AND (workspaceId IS NULL OR workspaceId = '')";
   }
   countQuery += ' GROUP BY type';
   
@@ -4879,15 +4879,25 @@ app.post('/api/workspaces', userAuthMiddleware, (req, res) => {
 // List user's workspaces
 app.get('/api/workspaces', userAuthMiddleware, (req, res) => {
   const workspaces = db.prepare(`
-    SELECT w.*, wm.role as userRole,
+    SELECT w.*, wm.role as userRole, wm.allocatedCredits,
            (SELECT COUNT(*) FROM workspace_members WHERE workspaceId = w.id) as memberCount
     FROM workspaces w
     JOIN workspace_members wm ON w.id = wm.workspaceId AND wm.userId = ?
     ORDER BY w.isDefault DESC, w.updatedAt DESC
   `).all(req.user.id);
   
+  // Get user's personal credits for default workspace display
+  const userCredits = req.user.credits || 0;
+  
   workspaces.forEach(w => {
     w.privacySettings = JSON.parse(w.privacySettings || '{}');
+    // For default/personal workspaces, show user's personal credits
+    // For team workspaces, show workspace shared credits
+    if (w.isDefault) {
+      w.displayCredits = userCredits;
+    } else {
+      w.displayCredits = w.credits || 0;
+    }
   });
   
   res.json(workspaces);

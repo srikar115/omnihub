@@ -224,12 +224,10 @@ export function OmniHubContent({
 
   // Define fetchGenerations before useEffect that uses it
   const fetchGenerations = useCallback(async () => {
-    // Get the current workspace ID from the closure
     const currentWorkspaceId = activeWorkspace?.id;
     if (!currentWorkspaceId) return; // Don't fetch without workspace ID
     
     try {
-      // Always pass workspaceId to filter generations by active workspace
       const workspaceParam = `?workspaceId=${currentWorkspaceId}`;
       const response = await axios.get(`${API_BASE}/generations${workspaceParam}`, getAuthHeaders());
       setGenerations(response.data.generations || []);
@@ -246,8 +244,6 @@ export function OmniHubContent({
 
   // Fetch generations when user or active workspace changes
   useEffect(() => {
-    // Only fetch when both user and activeWorkspace are available
-    // This prevents fetching with empty workspaceId during initial load
     if (user && activeWorkspace) {
       fetchGenerations();
     } else if (!user) {
