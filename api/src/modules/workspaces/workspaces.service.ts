@@ -24,37 +24,58 @@ export class WorkspacesService {
   ) {}
 
   /**
-   * List user's workspaces
+   * List user's workspaces with improved credit display
    */
   async findAll(userId: string) {
+    // Get user's personal credits for default workspace display
+    const user = await this.db.getOne<{ credits: number }>(
+      'SELECT credits FROM users WHERE id = ?',
+      [userId],
+    );
+    const userCredits = user?.credits || 0;
+
     const workspaces = await this.db.getAll<any>(
-      `SELECT w.*, wm.role as userRole
+      `SELECT w.*, wm.role as userRole, wm.allocatedCredits,
+              (SELECT COUNT(*) FROM workspace_members WHERE workspaceId = w.id) as memberCount
        FROM workspaces w
        JOIN workspace_members wm ON w.id = wm.workspaceId
        WHERE wm.userId = ?
-       ORDER BY w.isDefault DESC, w.name ASC`,
+       ORDER BY w.isDefault DESC, w.updatedAt DESC`,
       [userId],
     );
 
-    return workspaces.map((ws) => ({
-      ...ws,
-      privacySettings:
+    return workspaces.map((ws) => {
+      const privacySettings =
         typeof ws.privacySettings === 'string'
           ? JSON.parse(ws.privacySettings)
-          : ws.privacySettings,
-    }));
+          : ws.privacySettings || {};
+
+      // For default/personal workspaces, show user's personal credits
+      // For team workspaces, show workspace shared credits
+      const displayCredits = ws.isDefault ? userCredits : (ws.credits || 0);
+
+      return {
+        ...ws,
+        privacySettings,
+        displayCredits,
+      };
+    });
   }
 
   /**
-   * Create a new workspace
+   * Create a new workspace - matches Express POST /api/workspaces
    */
   async create(userId: string, dto: CreateWorkspaceDto) {
+    if (!dto.name?.trim()) {
+      throw new BadRequestException('Workspace name is required');
+    }
+
     const id = uuidv4();
 
     await this.db.run(
       `INSERT INTO workspaces (id, name, ownerId, credits, creditMode, isDefault, createdAt, updatedAt)
        VALUES (?, ?, ?, 0, 'shared', 0, datetime('now'), datetime('now'))`,
-      [id, dto.name, userId],
+      [id, dto.name.trim(), userId],
     );
 
     // Add creator as owner
@@ -64,36 +85,51 @@ export class WorkspacesService {
       [uuidv4(), id, userId],
     );
 
-    return { id, name: dto.name, ownerId: userId };
+    // Return full workspace object (matches Express getWorkspace)
+    const workspace = await this.db.getOne<any>('SELECT * FROM workspaces WHERE id = ?', [id]);
+    return {
+      ...workspace,
+      privacySettings:
+        typeof workspace.privacySettings === 'string'
+          ? JSON.parse(workspace.privacySettings || '{}')
+          : workspace.privacySettings || {},
+    };
   }
 
   /**
-   * Get workspace by ID
+   * Get workspace by ID - matches Express GET /api/workspaces/:id
    */
   async findOne(userId: string, id: string) {
-    // Check if user is a member
-    const member = await this.db.getOne<any>(
-      'SELECT * FROM workspace_members WHERE workspaceId = ? AND userId = ?',
-      [id, userId],
-    );
-
-    if (!member) {
-      throw new ForbiddenException('Not a member of this workspace');
-    }
-
     const workspace = await this.db.getOne<any>('SELECT * FROM workspaces WHERE id = ?', [id]);
 
     if (!workspace) {
       throw new NotFoundException('Workspace not found');
     }
 
+    // Check if user is a member or owner
+    const member = await this.db.getOne<any>(
+      'SELECT * FROM workspace_members WHERE workspaceId = ? AND userId = ?',
+      [id, userId],
+    );
+
+    if (!member && workspace.ownerId !== userId) {
+      throw new ForbiddenException('Not a member of this workspace');
+    }
+
+    // Get member count
+    const memberCount = await this.db.getOne<{ count: number }>(
+      'SELECT COUNT(*) as count FROM workspace_members WHERE workspaceId = ?',
+      [id],
+    );
+
     return {
       ...workspace,
       privacySettings:
         typeof workspace.privacySettings === 'string'
           ? JSON.parse(workspace.privacySettings)
-          : workspace.privacySettings,
-      userRole: member.role,
+          : workspace.privacySettings || {},
+      userRole: member?.role || 'owner',
+      memberCount: memberCount?.count || 0,
     };
   }
 

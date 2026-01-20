@@ -75,24 +75,20 @@ export class ChatService {
   }
 
   /**
-   * Create a new conversation
+   * Create a new conversation - matches Express POST /api/chat/conversations
    */
   async createConversation(userId: string, dto: CreateConversationDto) {
     const id = uuidv4();
+    const model = dto.modelId ? await this.db.getOne<any>('SELECT name FROM models WHERE id = ?', [dto.modelId]) : null;
 
     await this.db.run(
-      `INSERT INTO conversations (id, userId, title, modelId, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
-      [id, userId, dto.title || 'New Chat', dto.modelId || null],
+      `INSERT INTO conversations (id, userId, title, modelId, modelName, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [id, userId, dto.title || 'New Chat', dto.modelId || null, model?.name || null],
     );
 
-    return {
-      id,
-      userId,
-      title: dto.title || 'New Chat',
-      modelId: dto.modelId,
-      messages: [],
-    };
+    const conversation = await this.db.getOne<any>('SELECT * FROM conversations WHERE id = ?', [id]);
+    return conversation;
   }
 
   /**

@@ -7,7 +7,7 @@ export class ModelsService {
   constructor(private db: DatabaseService) {}
 
   /**
-   * Get profit margin from settings
+   * Get profit margin from settings (returns percentage value like Express backend)
    */
   private async getProfitMargin(modelType: string): Promise<number> {
     try {
@@ -19,7 +19,7 @@ export class ModelsService {
       );
 
       if (setting && setting.value) {
-        return parseFloat(setting.value) / 100;
+        return parseFloat(setting.value);
       }
 
       // Fall back to general margin
@@ -28,9 +28,24 @@ export class ModelsService {
         ['profitMargin'],
       );
 
-      return setting ? parseFloat(setting.value) / 100 : 0;
+      return setting ? parseFloat(setting.value) : 0;
     } catch {
       return 0;
+    }
+  }
+
+  /**
+   * Get credit price from settings
+   */
+  private async getCreditPrice(): Promise<number> {
+    try {
+      const setting = await this.db.getOne<{ value: string }>(
+        'SELECT value FROM settings WHERE key = ?',
+        ['creditPrice'],
+      );
+      return setting ? parseFloat(setting.value) : 1;
+    } catch {
+      return 1;
     }
   }
 
@@ -55,7 +70,7 @@ export class ModelsService {
   }
 
   /**
-   * Calculate final price with profit margin
+   * Calculate final price with profit margin (like Express calculatePrice)
    */
   private async calculateFinalPrice(
     model: any,
@@ -63,39 +78,32 @@ export class ModelsService {
   ): Promise<number> {
     const basePrice = this.calculateBasePrice(model, selectedOptions);
     const margin = await this.getProfitMargin(model.type || 'image');
-    return Number((basePrice * (1 + margin)).toFixed(6));
+    const creditPrice = await this.getCreditPrice();
+    
+    // Apply margin and convert to credits (same as Express backend)
+    const priceWithMargin = basePrice * (1 + margin / 100);
+    const creditsPerDollar = 1 / creditPrice;
+    return Number((priceWithMargin * creditsPerDollar).toFixed(6));
   }
 
   /**
-   * Get all models
+   * Get all models - matches Express GET /api/models response
    */
   async findAll() {
     const models = await this.db.getAll<any>(
-      `SELECT * FROM models WHERE enabled = 1 ORDER BY displayOrder ASC, name ASC`,
+      `SELECT id, name, provider, type, credits, baseCost, options, imageInput, maxInputImages, 
+              thumbnail, logoUrl, heading, subheading, tags, displayOrder, category, 
+              providerName, docUrl, imageParamName, imageParamType, capabilities
+       FROM models WHERE enabled = 1 ORDER BY type, displayOrder, credits`,
     );
 
-    // Parse JSON fields and calculate prices
-    const modelsWithPrices = await Promise.all(
-      models.map(async (model) => {
-        const options = typeof model.options === 'string' ? JSON.parse(model.options) : model.options || {};
-        const capabilities = typeof model.capabilities === 'string' ? JSON.parse(model.capabilities) : model.capabilities || {};
-        const tags = typeof model.tags === 'string' ? JSON.parse(model.tags) : model.tags || [];
-
-        // Calculate base price with margin
-        const price = await this.calculateFinalPrice(model);
-
-        return {
-          ...model,
-          options,
-          capabilities,
-          tags,
-          credits: price,
-          enabled: Boolean(model.enabled),
-        };
-      }),
-    );
-
-    return modelsWithPrices;
+    // Parse JSON fields (same as Express backend)
+    return models.map((model) => ({
+      ...model,
+      options: typeof model.options === 'string' ? JSON.parse(model.options || '{}') : model.options || {},
+      tags: typeof model.tags === 'string' ? JSON.parse(model.tags || '[]') : model.tags || [],
+      capabilities: typeof model.capabilities === 'string' ? JSON.parse(model.capabilities || '{}') : model.capabilities || {},
+    }));
   }
 
   /**
@@ -126,6 +134,7 @@ export class ModelsService {
 
   /**
    * Calculate price for model with options
+   * Returns same response structure as Express backend
    */
   async calculatePrice(id: string, dto: CalculatePriceDto) {
     const model = await this.db.getOne<any>('SELECT * FROM models WHERE id = ?', [id]);
@@ -134,14 +143,25 @@ export class ModelsService {
       throw new NotFoundException(`Model with ID "${id}" not found`);
     }
 
-    const price = await this.calculateFinalPrice(model, dto.options || {});
+    const basePrice = this.calculateBasePrice(model, dto.options || {});
+    const userCredits = await this.calculateFinalPrice(model, dto.options || {});
+    const margin = await this.getProfitMargin(model.type || 'image');
+    const creditPrice = await this.getCreditPrice();
 
     return {
-      modelId: id,
-      modelName: model.name,
-      basePrice: model.baseCost || model.credits || 0,
-      finalPrice: price,
-      options: dto.options || {},
+      price: userCredits,           // User-facing credits (with margin + conversion)
+      basePrice: basePrice,         // Base API cost in credits
+      baseCost: model.baseCost,     // Raw USD cost from API
+      profitMargin: margin,
+      creditPrice: creditPrice,
+      // Calculation breakdown
+      breakdown: {
+        apiCost: basePrice,
+        marginPercent: margin,
+        priceWithMargin: basePrice * (1 + margin / 100),
+        creditsPerDollar: 1 / creditPrice,
+        finalCredits: userCredits,
+      },
     };
   }
 

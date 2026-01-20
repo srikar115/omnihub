@@ -18,8 +18,8 @@ export class UpscaleController {
   @Post(UPSCALE_ROUTES.CALCULATE)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  async calculateCost(@Body() body: any) {
-    return this.upscaleService.calculateCost(body);
+  async calculateCost(@CurrentUser() user: CurrentUserData, @Body() body: any) {
+    return this.upscaleService.calculateCost(user.id, body);
   }
 
   @Post(UPSCALE_ROUTES.CREATE)

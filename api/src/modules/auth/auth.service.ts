@@ -65,12 +65,12 @@ export class AuthService {
   }
 
   /**
-   * Ensure user has a default workspace
+   * Ensure user has a default workspace and return it
    */
-  private async ensureDefaultWorkspace(userId: string, userName: string): Promise<void> {
+  private async ensureDefaultWorkspace(userId: string, userName: string): Promise<any> {
     try {
-      const existing = await this.db.getOne(
-        'SELECT id FROM workspaces WHERE ownerId = ? AND isDefault = 1',
+      let existing = await this.db.getOne<any>(
+        'SELECT * FROM workspaces WHERE ownerId = ? AND isDefault = 1',
         [userId],
       );
 
@@ -87,9 +87,20 @@ export class AuthService {
            VALUES (?, ?, ?, 'owner', 0)`,
           [uuidv4(), workspaceId, userId],
         );
+
+        existing = await this.db.getOne<any>('SELECT * FROM workspaces WHERE id = ?', [workspaceId]);
       }
+
+      if (existing?.privacySettings) {
+        existing.privacySettings = typeof existing.privacySettings === 'string'
+          ? JSON.parse(existing.privacySettings)
+          : existing.privacySettings;
+      }
+
+      return existing;
     } catch (error) {
       console.error('[AUTH] Error creating default workspace:', error.message);
+      return null;
     }
   }
 
@@ -123,7 +134,7 @@ export class AuthService {
     );
 
     // Create default workspace
-    await this.ensureDefaultWorkspace(userId, name);
+    const defaultWorkspace = await this.ensureDefaultWorkspace(userId, name);
 
     // Generate token
     const token = this.generateToken({ userId, email });
@@ -135,8 +146,8 @@ export class AuthService {
         email,
         name,
         credits: freeCredits,
-        nickname,
       },
+      defaultWorkspace,
     };
   }
 
@@ -168,7 +179,7 @@ export class AuthService {
     }
 
     // Ensure default workspace exists
-    await this.ensureDefaultWorkspace(user.id, user.name);
+    const defaultWorkspace = await this.ensureDefaultWorkspace(user.id, user.name);
 
     // Generate token
     const token = this.generateToken({ userId: user.id, email: user.email });
@@ -180,9 +191,8 @@ export class AuthService {
         email: user.email,
         name: user.name,
         credits: user.credits,
-        nickname: user.nickname,
-        avatarUrl: user.avatarUrl,
       },
+      defaultWorkspace,
     };
   }
 
@@ -255,6 +265,9 @@ export class AuthService {
         }
       }
 
+      // Ensure default workspace exists
+      const defaultWorkspace = await this.ensureDefaultWorkspace(user.id, user.name);
+
       // Generate token
       const token = this.generateToken({ userId: user.id, email: user.email });
 
@@ -265,9 +278,9 @@ export class AuthService {
           email: user.email,
           name: user.name,
           credits: user.credits,
-          nickname: user.nickname,
           avatarUrl: user.avatarUrl,
         },
+        defaultWorkspace,
       };
     } catch (error) {
       console.error('[GOOGLE_AUTH] Error:', error.message);
@@ -276,7 +289,7 @@ export class AuthService {
   }
 
   /**
-   * Get current user profile
+   * Get current user profile - matches Express GET /api/auth/me
    */
   async getMe(userId: string) {
     const user = await this.db.getOne<{
@@ -284,36 +297,40 @@ export class AuthService {
       email: string;
       name: string;
       credits: number;
-      nickname: string;
-      avatarUrl: string;
       createdAt: string;
-    }>('SELECT id, email, name, credits, nickname, avatarUrl, createdAt FROM users WHERE id = ?', [
-      userId,
-    ]);
+    }>('SELECT id, email, name, credits, createdAt FROM users WHERE id = ?', [userId]);
 
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
 
-    // Get default workspace
-    const defaultWorkspace = await this.db.getOne<{ id: string; name: string }>(
-      'SELECT id, name FROM workspaces WHERE ownerId = ? AND isDefault = 1',
+    // Ensure default workspace exists
+    await this.ensureDefaultWorkspace(userId, user.name);
+
+    // Get all workspaces user is a member of (with full data like Express)
+    const workspaces = await this.db.getAll<any>(
+      `SELECT w.*, wm.role as userRole
+       FROM workspaces w
+       JOIN workspace_members wm ON w.id = wm.workspaceId AND wm.userId = ?
+       ORDER BY w.isDefault DESC, w.updatedAt DESC`,
       [userId],
     );
 
-    // Get all workspaces user is a member of
-    const workspaces = await this.db.getAll<{ id: string; name: string; role: string }>(
-      `SELECT w.id, w.name, wm.role
-       FROM workspaces w
-       JOIN workspace_members wm ON w.id = wm.workspaceId
-       WHERE wm.userId = ?`,
-      [userId],
-    );
+    // Parse privacySettings for each workspace
+    const parsedWorkspaces = workspaces.map((w) => ({
+      ...w,
+      privacySettings: typeof w.privacySettings === 'string'
+        ? JSON.parse(w.privacySettings || '{}')
+        : w.privacySettings || {},
+    }));
+
+    // defaultWorkspace is first workspace with isDefault=1 or first in array
+    const defaultWorkspace = parsedWorkspaces.find((w) => w.isDefault) || parsedWorkspaces[0] || null;
 
     return {
       ...user,
+      workspaces: parsedWorkspaces,
       defaultWorkspace,
-      workspaces,
     };
   }
 }

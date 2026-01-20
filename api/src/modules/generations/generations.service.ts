@@ -155,25 +155,49 @@ export class GenerationsService {
   }
 
   /**
-   * List user's generations
+   * List user's generations with improved workspace filtering
+   * Returns { generations, counts } to match Express backend
    */
   async findAll(userId: string, dto: ListGenerationsDto) {
     const { type, workspaceId, limit = 50, offset = 0 } = dto;
 
-    let query = `
-      SELECT * FROM generations
-      WHERE userId = ?
-    `;
+    let query = `SELECT * FROM generations WHERE userId = ?`;
     const params: any[] = [userId];
+
+    // Build workspace filter clause
+    let workspaceFilter = '';
+    const workspaceParams: any[] = [];
+
+    // Filter by workspace with improved logic for default workspaces
+    if (workspaceId) {
+      // Check if this is the user's default workspace
+      const workspace = await this.db.getOne<{ isDefault: number }>(
+        `SELECT w.isDefault FROM workspaces w
+         JOIN workspace_members wm ON w.id = wm.workspaceId
+         WHERE w.id = ? AND wm.userId = ?`,
+        [workspaceId, userId],
+      );
+
+      if (workspace && workspace.isDefault) {
+        // For default workspace, include: workspaceId matches OR workspaceId is NULL (legacy generations)
+        workspaceFilter = " AND (workspaceId = ? OR workspaceId IS NULL OR workspaceId = '')";
+        workspaceParams.push(workspaceId);
+      } else {
+        // For non-default workspaces, only show generations with matching workspaceId
+        workspaceFilter = ' AND workspaceId = ?';
+        workspaceParams.push(workspaceId);
+      }
+    } else {
+      // No workspaceId provided - show only generations without workspace (legacy)
+      workspaceFilter = " AND (workspaceId IS NULL OR workspaceId = '')";
+    }
+
+    query += workspaceFilter;
+    params.push(...workspaceParams);
 
     if (type) {
       query += ' AND type = ?';
       params.push(type);
-    }
-
-    if (workspaceId) {
-      query += ' AND workspaceId = ?';
-      params.push(workspaceId);
     }
 
     query += ' ORDER BY startedAt DESC LIMIT ? OFFSET ?';
@@ -182,10 +206,25 @@ export class GenerationsService {
     const generations = await this.db.getAll<any>(query, params);
 
     // Parse JSON fields
-    return generations.map((gen) => ({
+    const parsedGenerations = generations.map((gen) => ({
       ...gen,
       options: typeof gen.options === 'string' ? JSON.parse(gen.options) : gen.options,
     }));
+
+    // Get counts by type (filtered by same workspace logic)
+    let countQuery = 'SELECT type, COUNT(*) as count FROM generations WHERE userId = ?';
+    const countParams: any[] = [userId];
+    countQuery += workspaceFilter;
+    countParams.push(...workspaceParams);
+    countQuery += ' GROUP BY type';
+
+    const countsResult = await this.db.getAll<{ type: string; count: number }>(countQuery, countParams);
+    const counts = Object.fromEntries(countsResult.map((c) => [c.type, c.count]));
+
+    return {
+      generations: parsedGenerations,
+      counts,
+    };
   }
 
   /**

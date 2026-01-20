@@ -5,20 +5,37 @@ import { DatabaseService } from '@database/database.service';
 export class SettingsService {
   constructor(private db: DatabaseService) {}
 
-  async getGoogleClientId() {
+  /**
+   * Get a setting value by key
+   */
+  private async getSetting(key: string): Promise<string | null> {
     const setting = await this.db.getOne<{ value: string }>(
       'SELECT value FROM settings WHERE key = ?',
-      ['googleClientId'],
+      [key],
     );
     return setting?.value || null;
   }
 
+  async getGoogleClientId() {
+    return this.getSetting('googleClientId');
+  }
+
   async getRazorpayKeyId() {
-    const setting = await this.db.getOne<{ value: string }>(
-      'SELECT value FROM settings WHERE key = ?',
-      ['razorpayKeyId'],
-    );
-    return setting?.value || null;
+    return this.getSetting('razorpayKeyId');
+  }
+
+  /**
+   * Get public pricing settings (no auth required, excludes sensitive data)
+   */
+  async getPricingSettings() {
+    return {
+      profitMargin: parseFloat(await this.getSetting('profitMargin')) || 0,
+      profitMarginImage: parseFloat(await this.getSetting('profitMarginImage')) || 0,
+      profitMarginVideo: parseFloat(await this.getSetting('profitMarginVideo')) || 0,
+      profitMarginChat: parseFloat(await this.getSetting('profitMarginChat')) || 0,
+      creditPrice: parseFloat(await this.getSetting('creditPrice')) || 1,
+      freeCredits: parseFloat(await this.getSetting('freeCredits')) || 10,
+    };
   }
 
   async getLandingFeatured() {

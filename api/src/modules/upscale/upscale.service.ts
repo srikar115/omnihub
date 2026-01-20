@@ -1,28 +1,80 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '@database/database.service';
 
 @Injectable()
 export class UpscaleService {
   constructor(private db: DatabaseService) {}
 
+  /**
+   * Get upscale models - matches Express GET /api/upscale/models
+   */
   async getModels(type?: string) {
-    const query = type
-      ? `SELECT * FROM models WHERE category = 'upscale' AND enabled = 1 AND type = ?`
-      : `SELECT * FROM models WHERE category = 'upscale' AND enabled = 1`;
-    return this.db.getAll<any>(query, type ? [type] : []);
+    const models = await this.db.getAll<any>(
+      `SELECT id, name, provider, type, credits, options, providerName, docUrl, tags
+       FROM models WHERE enabled = 1 AND category = 'upscale'
+       ORDER BY displayOrder`,
+    );
+
+    // Parse JSON fields
+    const parsedModels = models.map((m) => ({
+      ...m,
+      options: typeof m.options === 'string' ? JSON.parse(m.options || '{}') : m.options || {},
+      tags: typeof m.tags === 'string' ? JSON.parse(m.tags || '[]') : m.tags || [],
+    }));
+
+    // Filter by type if specified
+    if (type === 'image') {
+      return parsedModels.filter((m) => m.type === 'image');
+    } else if (type === 'video') {
+      return parsedModels.filter((m) => m.type === 'video');
+    }
+
+    return parsedModels;
   }
 
-  async calculateCost(data: { modelId: string; sourceType: string; scaleFactor: number }) {
-    const model = await this.db.getOne<any>('SELECT * FROM models WHERE id = ?', [data.modelId]);
-    if (!model) throw new BadRequestException('Model not found');
+  /**
+   * Calculate upscale cost - matches Express POST /api/upscale/calculate
+   */
+  async calculateCost(
+    userId: string,
+    data: { generationId: string; modelId: string; options?: Record<string, any> },
+  ) {
+    // Get source generation to determine type
+    const sourceGen = await this.db.getOne<any>(
+      'SELECT * FROM generations WHERE id = ? AND userId = ?',
+      [data.generationId, userId],
+    );
 
-    const baseCost = model.baseCost || 0.01;
-    const cost = baseCost * Math.pow(data.scaleFactor, 2);
+    if (!sourceGen) {
+      throw new NotFoundException('Source generation not found');
+    }
+
+    const model = await this.db.getOne<any>('SELECT * FROM models WHERE id = ?', [data.modelId]);
+    if (!model) {
+      throw new BadRequestException('Invalid model');
+    }
+
+    // Calculate price with options (matches Express calculatePrice)
+    let price = model.credits || model.baseCost || 0;
+    const modelOptions = typeof model.options === 'string' ? JSON.parse(model.options) : model.options || {};
+
+    if (data.options) {
+      for (const [key, value] of Object.entries(data.options)) {
+        const optionConfig = modelOptions[key];
+        if (optionConfig?.choices) {
+          const choice = optionConfig.choices.find((c: any) => String(c.value) === String(value));
+          if (choice?.priceMultiplier) {
+            price *= choice.priceMultiplier;
+          }
+        }
+      }
+    }
 
     return {
-      modelId: data.modelId,
-      estimatedCost: Number(cost.toFixed(6)),
-      scaleFactor: data.scaleFactor,
+      price,
+      basePrice: model.credits,
+      model: model.name,
+      sourceType: sourceGen.type,
     };
   }
 
